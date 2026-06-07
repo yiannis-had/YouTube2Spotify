@@ -255,7 +255,7 @@ def _is_valid_match(search: SongSearch, spotify_track: dict) -> bool:
     if not _track_matches(swapped_track, spotify_name):
         return False
 
-    return _artist_matches(search.track, spotify_artists)
+    return _artists_match([search.track], spotify_artists)
 
 
 def _parse_song_title(title: str) -> SongSearch | None:
