@@ -22,7 +22,7 @@ class SongTitleParsingTests(unittest.TestCase):
             ("Miles Davis - So What", "So What", ["Miles Davis"]),
             ("Mozart - Requiem: Lacrimosa", "Requiem: Lacrimosa", ["Mozart"]),
             ("Vivaldi - Four Seasons: Winter", "Four Seasons: Winter", ["Vivaldi"]),
-            ("Daft Punk - One More Time", "One More Time", ["Daft Punk"]),
+            ("Calvin Harris - Summer", "Summer", ["Calvin Harris"]),
             ("The Weeknd - Blinding Lights (Official Audio)", "Blinding Lights", ["The Weeknd"]),
             ("Avicii - Wake Me Up", "Wake Me Up", ["Avicii"]),
             ("Armin van Buuren - Blah Blah Blah (Extended Mix)", "Blah Blah Blah", ["Armin van Buuren"]),
