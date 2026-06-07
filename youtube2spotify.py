@@ -243,11 +243,19 @@ def _is_valid_match(search: SongSearch, spotify_track: dict) -> bool:
     spotify_name = spotify_track["name"]
     spotify_artists = [a["name"] for a in spotify_track["artists"]]
 
-    if not _track_matches(search.track, spotify_name):
+    if _track_matches(search.track, spotify_name):
+        if search.artists and not _artists_match(search.artists, spotify_artists):
+            return False
+        return True
+
+    if not search.artists:
         return False
-    if search.artists and not _artists_match(search.artists, spotify_artists):
+
+    swapped_track = search.artists[0]
+    if not _track_matches(swapped_track, spotify_name):
         return False
-    return True
+
+    return _artist_matches(search.track, spotify_artists)
 
 
 def _parse_song_title(title: str) -> SongSearch | None:
