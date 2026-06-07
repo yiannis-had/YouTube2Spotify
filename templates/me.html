@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}done — YouTube2Spotify{% endblock %}
+
+{% block header %}
+<header class="masthead">
+  <h1><em>youtube</em> → <strong>spotify</strong></h1>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="panel">
+  <p class="done-badge">import finished</p>
+
+  <div class="profile">
+    {% if data.images %}
+      <img class="avatar" src="{{ data.images[0].url }}" alt="">
+    {% else %}
+      <div class="avatar-fallback">?</div>
+    {% endif %}
+    <h2>hey <span>{{ data.display_name }}</span>, your playlist is ready.</h2>
+  </div>
+
+  <ul class="result-list">
+    <li>
+      <span class="k">your profile</span>
+      <a href="{{ data.external_urls.spotify }}" target="_blank" rel="noopener">
+        {{ data.external_urls.spotify }}
+      </a>
+    </li>
+    <li>
+      <span class="k">new playlist</span>
+      <a href="{{ playlist.external_urls.spotify }}" target="_blank" rel="noopener">
+        {{ playlist.external_urls.spotify }}
+      </a>
+    </li>
+  </ul>
+
+  <div class="actions">
+    <a href="/logout" class="btn btn-ghost">log out</a>
+  </div>
+</div>
+{% endblock %}
