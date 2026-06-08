@@ -220,6 +220,7 @@ class SongTitleParsingTests(unittest.TestCase):
             for line in raw_titles.splitlines()
             if line.strip().startswith("- ")
         ]
+        titles = list(dict.fromkeys(titles))
         null_titles = {"Private video", "Deleted video"}
 
         for title in titles:
