@@ -259,7 +259,7 @@ def _is_valid_match(search: SongSearch, spotify_track: dict) -> bool:
 
 
 def _parse_song_title(title: str) -> SongSearch | None:
-    if not title or title.strip().lower() == "private video":
+    if not title or title.strip().lower() in {"private video", "deleted video"}:
         return None
 
     cleaned = _strip_brackets_and_parens(title)

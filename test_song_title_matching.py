@@ -49,6 +49,7 @@ class SongTitleParsingTests(unittest.TestCase):
         self.assertIsNone(_parse_song_title(""))
         self.assertIsNone(_parse_song_title("   "))
         self.assertIsNone(_parse_song_title("Private video"))
+        self.assertIsNone(_parse_song_title("Deleted video"))
 
     def test_parse_song_title_from_provided_playlist_titles(self):
         raw_titles = """
@@ -219,7 +220,7 @@ class SongTitleParsingTests(unittest.TestCase):
             for line in raw_titles.splitlines()
             if line.strip().startswith("- ")
         ]
-        null_titles = {"Private video"}
+        null_titles = {"Private video", "Deleted video"}
 
         for title in titles:
             with self.subTest(title=title):
