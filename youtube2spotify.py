@@ -1,4 +1,5 @@
 import asyncio
+import html
 import json
 import logging
 import os
@@ -90,6 +91,8 @@ _JUNK_CONTAINS = re.compile(
     r"pt\.?\s*\d+|part\s+\d+",
     re.I,
 )
+_MIN_NEEDLE_LEN = 2  # Tokens shorter than this are filtered out in _tokens_in_order
+
 _GENRES = frozenset({
     "house", "deep house", "tech house", "electro house", "progressive house",
     "future house", "bass house", "dubstep", "drumstep", "electronic", "edm", "trap",
@@ -125,7 +128,7 @@ def _parse_track_segment(segment: str) -> tuple[str, list[str]]:
 
 
 def _is_junk_segment(segment: str) -> bool:
-    if not segment or len(segment) > 80:
+    if not segment.strip() or len(segment) > 80:
         return True
     if _JUNK_SEGMENT.match(segment):
         return True
@@ -192,11 +195,14 @@ def _artist_matches(expected: str, spotify_artists: list[str]) -> bool:
 
 
 def _tokens_in_order(needles: list[str], haystack: list[str]) -> bool:
+    meaningful = [n for n in needles if len(n) >= _MIN_NEEDLE_LEN]
+    if not meaningful:
+        return False
     idx = 0
     for token in haystack:
-        if idx < len(needles) and token == needles[idx]:
+        if idx < len(meaningful) and token == meaningful[idx]:
             idx += 1
-    return idx == len(needles)
+    return idx == len(meaningful)
 
 
 def _track_matches(expected: str, spotify_name: str) -> bool:
@@ -217,7 +223,7 @@ def _track_matches(expected: str, spotify_name: str) -> bool:
     if len(exp_tokens) == 1:
         token = exp_tokens[0]
         if len(token) < 4:
-            return token in got_tokens
+            return exp_norm == got_norm  # short token: require exact full-string match
         return token in got_tokens
 
     return False
@@ -251,16 +257,18 @@ def _is_valid_match(search: SongSearch, spotify_track: dict) -> bool:
     if not search.artists:
         return False
 
-    swapped_track = search.artists[0]
-    if not _track_matches(swapped_track, spotify_name):
-        return False
+    for candidate_track in search.artists:
+        if _track_matches(candidate_track, spotify_name):
+            if _artists_match([search.track], spotify_artists):
+                return True
 
-    return _artists_match([search.track], spotify_artists)
+    return False
 
 
 def _parse_song_title(title: str) -> SongSearch | None:
     if not title or title.strip().lower() in {"private video", "deleted video"}:
         return None
+    title = html.unescape(title)
 
     cleaned = _strip_brackets_and_parens(title)
     segments = [_clean_segment(s) for s in _SEGMENT_SPLIT.split(cleaned)]

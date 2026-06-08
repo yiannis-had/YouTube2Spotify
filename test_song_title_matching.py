@@ -1,7 +1,16 @@
 import unittest
 
-from youtube2spotify import SongSearch, _is_valid_match, _parse_song_title
+from youtube2spotify import (
+    SongSearch,
+    _is_valid_match,
+    _parse_song_title,
+    _tokens_in_order,
+)
 
+
+# ---------------------------------------------------------------------------
+# Shared fixtures
+# ---------------------------------------------------------------------------
 
 PARSE_SONG_TITLE_CASES = [
     ("Chuck Berry - Johnny B. Goode", "Johnny B. Goode", ["Chuck Berry"]),
@@ -35,38 +44,159 @@ PARSE_SONG_TITLE_CASES = [
     ("Lady Gaga & Ariana Grande - Rain On Me", "Rain On Me", ["Lady Gaga", "Ariana Grande"]),
     ("Linkin Park / Jay-Z - Numb/Encore", "Numb/Encore", ["Linkin Park", "Jay-Z"]),
 ]
-PARSE_SONG_TITLE_NON_SONG_ENTRIES = [
-    "",
-    "   ",
-    "Private video",
-    "private video",
-    "Deleted video",
-    "DELETED VIDEO",
-]
-PARSE_SONG_TITLE_MATCH_CASE_INPUTS = {
-    "single_word_artist": "Queen - Bohemian Rhapsody",
-    "artist_with_space": "Miles Davis - So What",
-    "acronym_artist": "BTS - Dynamite",
-    "hyphenated_artist": "Take On Me - a-ha",
-}
 
 
-class SongTitleParsingTests(unittest.TestCase):
+# ---------------------------------------------------------------------------
+# 1. TestTokensInOrder
+# ---------------------------------------------------------------------------
+
+class TestTokensInOrder(unittest.TestCase):
+    """Tests for _tokens_in_order minimum-length needle guard (Req 6.1, 6.3)."""
+
+    def test_single_char_needle_returns_false(self):
+        """A single-character needle is filtered out; empty meaningful list → False."""
+        self.assertFalse(_tokens_in_order(["a"], ["a", "song"]))
+
+    def test_single_char_needle_exact_haystack_still_false(self):
+        """Even when haystack equals the needle, a 1-char needle is filtered → False."""
+        self.assertFalse(_tokens_in_order(["i"], ["i"]))
+
+    def test_all_short_needles_returns_false(self):
+        """All needles below the minimum length → meaningful is empty → False."""
+        self.assertFalse(_tokens_in_order(["a", "i"], ["a", "i", "song"]))
+
+    def test_normal_needle_still_matches(self):
+        """A needle of 4+ chars follows the existing sequential-scan logic."""
+        self.assertTrue(_tokens_in_order(["song"], ["song"]))
+
+    def test_mixed_needles_short_ones_ignored(self):
+        """Short needles are stripped; only the long needle must be matched."""
+        self.assertTrue(_tokens_in_order(["a", "song"], ["song"]))
+
+    def test_two_char_needle_passes_through(self):
+        """A 2-char needle meets _MIN_NEEDLE_LEN=2 and is NOT filtered out."""
+        self.assertTrue(_tokens_in_order(["it"], ["it", "rocks"]))
+
+    def test_two_meaningful_needles_in_order(self):
+        """Two needles of sufficient length must appear in order in the haystack."""
+        self.assertTrue(_tokens_in_order(["take", "me"], ["take", "on", "me"]))
+
+    def test_two_meaningful_needles_out_of_order(self):
+        """Needles present but in wrong order → False."""
+        self.assertFalse(_tokens_in_order(["me", "take"], ["take", "on", "me"]))
+
+
+# ---------------------------------------------------------------------------
+# 2. TestParseSongTitleHappyPath
+# ---------------------------------------------------------------------------
+
+class TestParseSongTitleHappyPath(unittest.TestCase):
+    """Well-formed 'artist – track' titles; asserts both track and artists (Req 8.1, 8.2)."""
+
     def test_parse_song_title_across_genres_and_eras(self):
         for title, expected_track, expected_artists in PARSE_SONG_TITLE_CASES:
             with self.subTest(title=title):
                 parsed = _parse_song_title(title)
-                self.assertIsNotNone(parsed)
+                self.assertIsNotNone(parsed, msg=f"Expected non-None for {title!r}")
                 self.assertEqual(expected_track, parsed.track)
                 self.assertEqual(expected_artists, parsed.artists)
 
-    def test_parse_song_title_discards_non_song_entries(self):
-        for title in PARSE_SONG_TITLE_NON_SONG_ENTRIES:
-            with self.subTest(title=title):
-                self.assertIsNone(_parse_song_title(title))
 
-    def test_parse_song_title_from_provided_playlist_titles(self):
-        raw_titles = """
+# ---------------------------------------------------------------------------
+# 3. TestParseSongTitleEdgeCases
+# ---------------------------------------------------------------------------
+
+class TestParseSongTitleEdgeCases(unittest.TestCase):
+    """Edge cases for _parse_song_title: non-songs, HTML entities, accents, Topic, etc."""
+
+    # --- non-song entries (Req 8.1) ---
+
+    def test_empty_string_returns_none(self):
+        self.assertIsNone(_parse_song_title(""))
+
+    def test_whitespace_only_returns_none(self):
+        self.assertIsNone(_parse_song_title("   "))
+
+    def test_private_video_lower_returns_none(self):
+        self.assertIsNone(_parse_song_title("Private video"))
+
+    def test_private_video_upper_returns_none(self):
+        self.assertIsNone(_parse_song_title("private video"))
+
+    def test_deleted_video_lower_returns_none(self):
+        self.assertIsNone(_parse_song_title("Deleted video"))
+
+    def test_deleted_video_upper_returns_none(self):
+        self.assertIsNone(_parse_song_title("DELETED VIDEO"))
+
+    # --- HTML entity decoding (Req 8.3) ---
+
+    def test_amp_entity_decoded_before_split(self):
+        """&amp; is decoded to & so the artist split works correctly (Req 8.3)."""
+        result = _parse_song_title("Skrillex &amp; Damian Marley - Make It Bun Dem")
+        self.assertIsNotNone(result)
+        self.assertEqual("Make It Bun Dem", result.track)
+        self.assertEqual(["Skrillex", "Damian Marley"], result.artists)
+
+    # --- Accented / non-ASCII titles (Req 8.4) ---
+
+    def test_accented_artist_preserved(self):
+        """Accented characters in artist name are kept intact (Req 8.4)."""
+        result = _parse_song_title("Rosalía - DESPECHÁ")
+        self.assertIsNotNone(result)
+        self.assertEqual("DESPECHÁ", result.track)
+        self.assertEqual(["Rosalía"], result.artists)
+
+    # --- YouTube Topic channel stripping (Req 7, 8.7) ---
+
+    def test_topic_segment_is_stripped(self):
+        """'Topic' is recognised as junk and removed before length-based decisions."""
+        result = _parse_song_title("Bohemian Rhapsody - Queen - Topic")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.track, "Queen")
+        self.assertEqual(result.artists, ["Bohemian Rhapsody"])
+
+    def test_topic_case_insensitive(self):
+        """'topic' and 'TOPIC' are both treated as junk."""
+        lower = _parse_song_title("Take On Me - a-ha - topic")
+        upper = _parse_song_title("Take On Me - a-ha - TOPIC")
+        no_topic = _parse_song_title("Take On Me - a-ha")
+        self.assertEqual(lower, upper)
+        self.assertEqual(lower, no_topic)
+
+    def test_single_segment_after_topic_stripped_is_bare_track(self):
+        """When only one non-junk segment remains after Topic removal, treat as bare track."""
+        result = _parse_song_title("Imagine - Topic")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.track, "Imagine")
+        self.assertEqual(result.artists, [])
+
+    # --- Remix / noise-only title (Req 8.6) ---
+
+    def test_noise_only_title_returns_none(self):
+        """A title whose only content is parenthesised junk leaves no segments → None (Req 8.6)."""
+        # The paren content is stripped leaving empty/junk segments only.
+        result = _parse_song_title("(Official Remix)")
+        self.assertIsNone(result)
+
+    # --- Bare track (single segment, no artist) ---
+
+    def test_bare_track_single_segment(self):
+        """A single non-junk segment with no dash separator becomes a bare track."""
+        result = _parse_song_title("Imagine")
+        self.assertIsNotNone(result)
+        self.assertEqual(result.track, "Imagine")
+        self.assertEqual(result.artists, [])
+
+
+# ---------------------------------------------------------------------------
+# 4. TestParseSongTitleRealPlaylist
+# ---------------------------------------------------------------------------
+
+class TestParseSongTitleRealPlaylist(unittest.TestCase):
+    """Parses a large raw-title fixture; also asserts specific track values (Req 8.8)."""
+
+    RAW_TITLES = """
 David Guetta - Titanium ft. Sia (Official Video)
 Ellie Goulding - Bittersweet (Spectrum Remix)
 Flight Facilities - Crave You (Adventure Club Dubstep Remix) (feat. Giselle)
@@ -186,7 +316,7 @@ U2 - Beautiful Day (Official Music Video)
 Aggro Santos feat Kimberly Wyatt - Candy (Official Video)
 Nelly Furtado - Night Is Young
 Martin Solveig - One 2 3 Four [please watch it in high quality]
-All Time Low - I Feel Like Dancin’
+All Time Low - I Feel Like Dancin'
 Grits - My Life Be Like (Ooh-Aah) with lyrics
 Abandon All Ships - Take One Last Breath (Official Music Video)
 David Guetta - Where Them Girls At ft. Nicki Minaj, Flo Rida (Official Video)
@@ -229,78 +359,175 @@ ENVY/Nico &amp; Vinz - Am I Wrong (Felix Zaltaio &amp; Lindh Van Berg Remix)
 Hi-Rez - Smiling
 Joywave - Tongues (feat. Kopps) (RAC Remix)
 """
-        titles = [
-            line.strip()
-            for line in raw_titles.splitlines()
-            if line.strip()
-        ]
-        titles = list(dict.fromkeys(titles))
-        null_titles = {"Private video", "Deleted video"}
 
-        for title in titles:
+    def setUp(self):
+        titles_raw = [line.strip() for line in self.RAW_TITLES.splitlines() if line.strip()]
+        self.titles = list(dict.fromkeys(titles_raw))
+        self.null_titles = {"Private video", "Deleted video"}
+
+    def test_all_titles_parse_non_null_or_are_known_null(self):
+        """Every fixture title either parses to a non-empty result or is a known null entry."""
+        for title in self.titles:
             with self.subTest(title=title):
                 parsed = _parse_song_title(title)
-                if title in null_titles:
+                if title in self.null_titles:
                     self.assertIsNone(parsed)
                     continue
                 self.assertIsNotNone(parsed)
                 self.assertTrue(parsed.track.strip())
 
-
-class SongMatchValidationTests(unittest.TestCase):
-    def test_valid_match_accepts_direct_and_swapped_patterns(self):
-        cases = [
+    def test_specific_track_values_for_known_good_titles(self):
+        """Assert specific track values for at least 5 known-good titles (Req 8.8)."""
+        known_good = [
             (
-                _parse_song_title(PARSE_SONG_TITLE_MATCH_CASE_INPUTS["single_word_artist"]),
-                {"name": "Bohemian Rhapsody - Remastered 2011", "artists": [{"name": "Queen"}]},
-                True,
+                "David Guetta - Titanium ft. Sia (Official Video)",
+                "Titanium",
             ),
             (
-                _parse_song_title(PARSE_SONG_TITLE_MATCH_CASE_INPUTS["artist_with_space"]),
-                {"name": "So What", "artists": [{"name": "Miles Davis"}]},
-                True,
+                "Gotye - Somebody That I Used To Know (feat. Kimbra) [Official Music Video]",
+                "Somebody That I Used To Know",
             ),
             (
-                _parse_song_title(PARSE_SONG_TITLE_MATCH_CASE_INPUTS["acronym_artist"]),
-                {"name": "Dynamite", "artists": [{"name": "BTS"}]},
-                True,
+                'Skrillex &amp; Damian "Jr. Gong" Marley - Make It Bun Dem [OFFICIAL VIDEO]',
+                "Make It Bun Dem",
             ),
             (
-                _parse_song_title(PARSE_SONG_TITLE_MATCH_CASE_INPUTS["hyphenated_artist"]),
-                {"name": "Take On Me", "artists": [{"name": "a-ha"}]},
-                True,
+                "Adventure Club &amp; Krewella - Rise &amp; Fall",
+                "Rise & Fall",
             ),
             (
-                SongSearch(track="Bad Guy", artists=["Billie Eilish"]),
-                {"name": "bad guy", "artists": [{"name": "Billie Eilish"}]},
-                True,
-            ),
-            (
-                SongSearch(track="Numb", artists=["Linkin Park"]),
-                {"name": "Numb", "artists": [{"name": "Jay-Z"}]},
-                False,
-            ),
-            (
-                SongSearch(track="One More Time", artists=[]),
-                {"name": "One More Time (Radio Edit)", "artists": [{"name": "Daft Punk"}]},
-                True,
-            ),
-            (
-                SongSearch(track="One More Time", artists=[]),
-                {"name": "Harder Better Faster Stronger", "artists": [{"name": "Daft Punk"}]},
-                False,
-            ),
-            (
-                SongSearch(track="Take On Me", artists=["a-ha"]),
-                {"name": "On Me", "artists": [{"name": "a-ha"}]},
-                False,
+                "Swedish House Mafia ft. John Martin - Don't You Worry Child (Official Video)",
+                "Don't You Worry Child",
             ),
         ]
+        for title, expected_track in known_good:
+            with self.subTest(title=title):
+                parsed = _parse_song_title(title)
+                self.assertIsNotNone(parsed, msg=f"Expected non-None for {title!r}")
+                self.assertEqual(expected_track, parsed.track)
 
-        for search, spotify_track, expected in cases:
-            with self.subTest(search=search, spotify_track=spotify_track):
-                self.assertIsNotNone(search)
-                self.assertEqual(expected, _is_valid_match(search, spotify_track))
+
+# ---------------------------------------------------------------------------
+# 5. TestIsValidMatchTruePositives
+# ---------------------------------------------------------------------------
+
+class TestIsValidMatchTruePositives(unittest.TestCase):
+    """Cases where _is_valid_match should return True."""
+
+    def test_direct_artist_track_match(self):
+        """Direct artist-track match: Queen / Bohemian Rhapsody."""
+        search = _parse_song_title("Queen - Bohemian Rhapsody (Official Video)")
+        self.assertTrue(
+            _is_valid_match(
+                search,
+                {"name": "Bohemian Rhapsody - Remastered 2011", "artists": [{"name": "Queen"}]},
+            )
+        )
+
+    def test_multi_word_artist_match(self):
+        """Multi-word artist name: Miles Davis / So What."""
+        search = _parse_song_title("Miles Davis - So What")
+        self.assertTrue(
+            _is_valid_match(
+                search,
+                {"name": "So What", "artists": [{"name": "Miles Davis"}]},
+            )
+        )
+
+    def test_acronym_artist_match(self):
+        """Acronym artist: BTS / Dynamite."""
+        search = _parse_song_title("BTS - Dynamite")
+        self.assertTrue(
+            _is_valid_match(
+                search,
+                {"name": "Dynamite", "artists": [{"name": "BTS"}]},
+            )
+        )
+
+    def test_reversed_format_swap_path(self):
+        """Reversed/swap format: 'Take On Me - a-ha'."""
+        search = _parse_song_title("Take On Me - a-ha")
+        self.assertTrue(
+            _is_valid_match(
+                search,
+                {"name": "Take On Me", "artists": [{"name": "a-ha"}]},
+            )
+        )
+
+    def test_case_insensitive_match(self):
+        """Case-insensitive match: 'bad guy' / Billie Eilish."""
+        search = SongSearch(track="Bad Guy", artists=["Billie Eilish"])
+        self.assertTrue(
+            _is_valid_match(
+                search,
+                {"name": "bad guy", "artists": [{"name": "Billie Eilish"}]},
+            )
+        )
+
+    def test_no_artist_search_matching_by_track_only(self):
+        """No-artist SongSearch matches by track name alone: One More Time."""
+        search = SongSearch(track="One More Time", artists=[])
+        self.assertTrue(
+            _is_valid_match(
+                search,
+                {"name": "One More Time (Radio Edit)", "artists": [{"name": "Daft Punk"}]},
+            )
+        )
+
+    def test_topic_channel_resolves_correctly_via_swap_path(self):
+        """Topic channel title resolves to the correct Spotify result via swap path."""
+        search = _parse_song_title("Bohemian Rhapsody - Queen - Topic")
+        spotify_track = {"name": "Bohemian Rhapsody", "artists": [{"name": "Queen"}]}
+        self.assertIsNotNone(search)
+        self.assertTrue(_is_valid_match(search, spotify_track))
+
+
+# ---------------------------------------------------------------------------
+# 6. TestIsValidMatchFalsePositives
+# ---------------------------------------------------------------------------
+
+class TestIsValidMatchFalsePositives(unittest.TestCase):
+    """Cases where _is_valid_match should return False."""
+
+    def test_wrong_artist(self):
+        """Wrong artist: Linkin Park track vs Jay-Z on Spotify."""
+        search = SongSearch(track="Numb", artists=["Linkin Park"])
+        self.assertFalse(
+            _is_valid_match(
+                search,
+                {"name": "Numb", "artists": [{"name": "Jay-Z"}]},
+            )
+        )
+
+    def test_wrong_track(self):
+        """Wrong track: 'One More Time' search vs a completely different Spotify track."""
+        search = SongSearch(track="One More Time", artists=[])
+        self.assertFalse(
+            _is_valid_match(
+                search,
+                {"name": "Harder Better Faster Stronger", "artists": [{"name": "Daft Punk"}]},
+            )
+        )
+
+    def test_partial_track_name(self):
+        """Partial track name: 'Take On Me' must not match Spotify track 'On Me'."""
+        search = SongSearch(track="Take On Me", artists=["a-ha"])
+        self.assertFalse(
+            _is_valid_match(
+                search,
+                {"name": "On Me", "artists": [{"name": "a-ha"}]},
+            )
+        )
+
+    def test_short_token_false_positive(self):
+        """Short-token guard (Req 8.5): 'One' by Metallica must not match 'One More Time'."""
+        search = SongSearch(track="One", artists=["Metallica"])
+        self.assertFalse(
+            _is_valid_match(
+                search,
+                {"name": "One More Time", "artists": [{"name": "Daft Punk"}]},
+            )
+        )
 
 
 if __name__ == "__main__":
