@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import unicodedata
 from dataclasses import dataclass
 from urllib.parse import urlencode
 
@@ -71,12 +72,12 @@ _FEATURE_PAREN = re.compile(
 )
 _OTHER_PAREN = re.compile(r"\([^)]*\)")
 _PIPE_TAIL = re.compile(r"\s*\|.*$")
-_SEGMENT_SPLIT = re.compile(r"\s+[-–—]+\s+")
+_SEGMENT_SPLIT = re.compile(r"\s+[-–—]+\s*|\s*[-–—]+\s+")
 _ARTIST_SPLIT = re.compile(r"\s*(?:&|\+)\s*")
 _FEAT_SPLIT = re.compile(r"\s*\bfeaturing\b\s*|\s*\bfeat\.?\s*|\s*\bft\.?\s*", re.I)
 _TRAILING_NOISE = re.compile(
-    r"\s+(?:official\s*)?(?:music\s*)?(?:video|audio|lyrics?|visualizer|"
-    r"teaser|trailer|official|preview|hd|hq|4k|1080p?|mv|m/?v)\s*$",
+    r"(?:\s+(?:official|music\s+video|video|audio|lyrics?|visualizer|"
+    r"teaser|trailer|preview|hd|hq|4k|1080p?|mv|m/?v|full|extended|mix))+\s*$",
     re.I,
 )
 _JUNK_SEGMENT = re.compile(
@@ -84,8 +85,6 @@ _JUNK_SEGMENT = re.compile(
     r"teaser|trailer|preview|remaster(?:ed)?|live|cover|topic|explicit|clean)\s*$",
     re.I,
 )
-_MIN_NEEDLE_LEN = 2  # Tokens shorter than this are filtered out in _tokens_in_order
-
 _GENRES = frozenset({
     "house", "deep house", "tech house", "electro house", "progressive house",
     "future house", "bass house", "dubstep", "drumstep", "electronic", "edm", "trap",
@@ -117,7 +116,7 @@ def _extract_artists(segment: str) -> list[str]:
 def _parse_track_segment(segment: str) -> tuple[str, list[str]]:
     parts = _FEAT_SPLIT.split(segment, maxsplit=1)
     track = parts[0].strip()
-    featured = [parts[1].strip()] if len(parts) > 1 and parts[1].strip() else []
+    featured = _extract_artists(parts[1]) if len(parts) > 1 and parts[1].strip() else []
     return track, featured
 
 
@@ -134,7 +133,7 @@ def _is_genre_segment(segment: str) -> bool:
 
 
 def _looks_like_artist(segment: str) -> bool:
-    if re.search(r"(?:&|/|\+)", segment) or _FEAT_SPLIT.search(segment):
+    if re.search(r"(?:&|\+)", segment) or _FEAT_SPLIT.search(segment):
         return True
     return len(segment.split()) >= 2
 
@@ -163,6 +162,7 @@ def _strip_brackets_and_parens(text: str) -> str:
 
 def _normalize(text: str) -> str:
     text = text.lower()
+    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("utf-8")
     text = re.sub(r"[^\w\s']", " ", text)
     return " ".join(text.split())
 
@@ -189,7 +189,7 @@ def _strip_spotify_noise(name: str) -> str:
 
 
 def _tokens_in_order(needles: list[str], haystack: list[str]) -> bool:
-    meaningful = [n for n in needles if len(n) >= _MIN_NEEDLE_LEN]
+    meaningful = [n for n in needles if len(n) >= 2]
     if not meaningful:
         return False
     idx = 0
@@ -318,17 +318,20 @@ def _parse_song_title(title: str) -> SongSearch | None:
     while segments and _is_genre_segment(segments[0]):
         segments.pop(0)
 
-    if len(segments) >= 3 and not _looks_like_artist(segments[0]):
-        segments.pop(0)
-
     if not segments:
         return None
+    
     if len(segments) == 1:
-        track, featured = _parse_track_segment(segments[0])
-        return SongSearch(track=track, artists=featured)
-
-    artist_segment = segments[0]
-    track_segment = segments[1]
+        m = re.search(r"^(.*?)\s+(['\"].*)$", segments[0])
+        if m:
+            artist_segment = _clean_segment(m.group(1))
+            track_segment = _clean_segment(m.group(2))
+        else:
+            track, featured = _parse_track_segment(segments[0])
+            return SongSearch(track=track, artists=featured)
+    else:
+        artist_segment = segments[0]
+        track_segment = segments[1]
 
     artists = _extract_artists(artist_segment)
     track, featured = _parse_track_segment(track_segment)
