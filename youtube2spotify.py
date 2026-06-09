@@ -40,7 +40,7 @@ SPOTIFY_SCOPE = (
     "playlist-modify-public playlist-modify-private"
 )
 
-SEARCH_CONCURRENCY = int(os.environ.get("SEARCH_CONCURRENCY", "10"))
+SEARCH_CONCURRENCY = int(os.environ.get("SEARCH_CONCURRENCY", "20"))
 PLAYLIST_BATCH_SIZE = 100
 
 
@@ -66,29 +66,22 @@ def _fetch_youtube_playlist_items(playlist_id: str) -> list:
 
 
 _BRACKETS = re.compile(r"\[[^\]]*\]")
-_REMIX_PAREN = re.compile(
-    r"\(([^)]*(?:remix|mix|edit|version|vip|bootleg)[^)]*)\)", re.I
-)
 _FEATURE_PAREN = re.compile(
     r"\(([^)]*(?:ft\.?|feat\.?|featuring)[^)]*)\)", re.I
 )
 _OTHER_PAREN = re.compile(r"\([^)]*\)")
-_SEGMENT_SPLIT = re.compile(r"\s+[-–—|]+\s+")
-_ARTIST_SPLIT = re.compile(r"\s*(?:&|\+|/)\s*")
-_FEAT_SPLIT = re.compile(r"\s*(?:ft\.?|feat\.?|featuring)\s*", re.I)
+_PIPE_TAIL = re.compile(r"\s*\|.*$")
+_SEGMENT_SPLIT = re.compile(r"\s+[-–—]+\s+")
+_ARTIST_SPLIT = re.compile(r"\s*(?:&|\+)\s*")
+_FEAT_SPLIT = re.compile(r"\s*\bfeaturing\b\s*|\s*\bfeat\.?\s*|\s*\bft\.?\s*", re.I)
 _TRAILING_NOISE = re.compile(
     r"\s+(?:official\s*)?(?:music\s*)?(?:video|audio|lyrics?|visualizer|"
-    r"teaser|trailer|preview|hd|4k|mv|m/?v)\s*$",
+    r"teaser|trailer|official|preview|hd|hq|4k|1080p?|mv|m/?v)\s*$",
     re.I,
 )
 _JUNK_SEGMENT = re.compile(
     r"^(?:official|audio|video|lyrics?|music\s*video|mv|hd|4k|visualizer|"
     r"teaser|trailer|preview|remaster(?:ed)?|live|cover|topic|explicit|clean)\s*$",
-    re.I,
-)
-_JUNK_CONTAINS = re.compile(
-    r"new\s+artist\s+week|release\s+party|radio\s+edit|club\s+mix|vip\s+mix|"
-    r"pt\.?\s*\d+|part\s+\d+",
     re.I,
 )
 _MIN_NEEDLE_LEN = 2  # Tokens shorter than this are filtered out in _tokens_in_order
@@ -104,8 +97,9 @@ _GENRES = frozenset({
 
 
 def _clean_segment(segment: str) -> str:
-    segment = segment.strip().strip('"\'')
+    segment = segment.strip().strip("'\"")
     segment = _TRAILING_NOISE.sub("", segment)
+    segment = re.sub(r"'\":", " ", segment)
     segment = re.sub(r"\s+", " ", segment).strip()
     return segment
 
@@ -128,11 +122,11 @@ def _parse_track_segment(segment: str) -> tuple[str, list[str]]:
 
 
 def _is_junk_segment(segment: str) -> bool:
-    if not segment.strip() or len(segment) > 80:
+    if not segment.strip() or len(segment) > 100:
         return True
     if _JUNK_SEGMENT.match(segment):
         return True
-    return bool(_JUNK_CONTAINS.search(segment))
+    return False
 
 
 def _is_genre_segment(segment: str) -> bool:
@@ -163,35 +157,35 @@ class SongSearch:
 def _strip_brackets_and_parens(text: str) -> str:
     text = _BRACKETS.sub(" ", text)
     text = _FEATURE_PAREN.sub(lambda m: f" {m.group(1)} ", text)
-    remixes: list[str] = []
-
-    def _stash_remix(match: re.Match[str]) -> str:
-        remixes.append(match.group(0))
-        return f" __REMIX{len(remixes) - 1}__ "
-
-    text = _REMIX_PAREN.sub(_stash_remix, text)
     text = _OTHER_PAREN.sub(" ", text)
-    for i, remix in enumerate(remixes):
-        text = text.replace(f"__REMIX{i}__", " ")
     return text
 
 
 def _normalize(text: str) -> str:
     text = text.lower()
-    text = re.sub(r"[^\w\s]", " ", text)
-    return re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"[^\w\s']", " ", text)
+    return " ".join(text.split())
 
 
-def _artist_matches(expected: str, spotify_artists: list[str]) -> bool:
-    exp_norm = _normalize(expected)
-    exp_tokens = exp_norm.split()
-    for name in spotify_artists:
-        norm = _normalize(name)
-        if norm == exp_norm:
-            return True
-        if len(exp_tokens) > 1 and _tokens_in_order(exp_tokens, norm.split()):
-            return True
-    return False
+_SPOTIFY_TRACK_NOISE = re.compile(
+    r"\s*[-–(]\s*(?:"
+    r"\d{4}\s*(?:remaster(?:ed)?|version|mix|edit|release)"
+    r"|remaster(?:ed)?(?:\s+\d{4})?"
+    r"|radio\s+edit"
+    r"|single\s+version"
+    r"|album\s+version"
+    r"|original\s+(?:mix|version)"
+    r"|deluxe(?:\s+edition)?"
+    r"|explicit"
+    r"|clean"
+    r")\s*\)?\s*$",
+    re.I,
+)
+
+
+def _strip_spotify_noise(name: str) -> str:
+    """Remove common Spotify suffixes from a track name."""
+    return _SPOTIFY_TRACK_NOISE.sub("", name).strip()
 
 
 def _tokens_in_order(needles: list[str], haystack: list[str]) -> bool:
@@ -206,10 +200,19 @@ def _tokens_in_order(needles: list[str], haystack: list[str]) -> bool:
 
 
 def _track_matches(expected: str, spotify_name: str) -> bool:
+    """
+    Return True when `expected` (from the parsed YouTube title) is a
+    reasonable match for `spotify_name`.
+    """
     exp_norm = _normalize(expected)
     got_norm = _normalize(spotify_name)
 
     if exp_norm == got_norm:
+        return True
+
+    exp_stripped = _normalize(_strip_spotify_noise(expected))
+    got_stripped = _normalize(_strip_spotify_noise(spotify_name))
+    if exp_stripped and exp_stripped == got_stripped:
         return True
 
     exp_tokens = exp_norm.split()
@@ -217,50 +220,87 @@ def _track_matches(expected: str, spotify_name: str) -> bool:
     if not exp_tokens:
         return False
 
-    if _tokens_in_order(exp_tokens, got_tokens):
-        return True
+    # all expected tokens must appear, in order, inside the (possibly longer) Spotify title.
+    if len(exp_tokens) > 1 and _tokens_in_order(exp_tokens, got_tokens):
+        # The Spotify title must start with the expected tokens
+        # and the expected title should account for at least half the tokens
+        if len(exp_tokens) >= len(got_tokens) // 2:
+            return True
 
+    # require single token to be a standalone word
     if len(exp_tokens) == 1:
         token = exp_tokens[0]
         if len(token) < 4:
-            return exp_norm == got_norm  # short token: require exact full-string match
-        return token in got_tokens
+            return exp_norm == got_norm
+        # Must appear as a complete token in the Spotify title
+        return token in got_tokens and got_tokens[0] == token
 
     return False
 
 
+def _artist_matches(expected: str, spotify_artists: list[str]) -> bool:
+    """
+    Return True when `expected` artist name matches any name in `spotify_artists`.
+    """
+    exp_norm = _normalize(expected)
+    exp_tokens = exp_norm.split()
+    for name in spotify_artists:
+        norm = _normalize(name)
+
+        if norm == exp_norm:
+            return True
+
+        sp_tokens = norm.split()
+        if len(exp_tokens) > 1 and _tokens_in_order(exp_tokens, sp_tokens):
+            return True
+
+        if len(sp_tokens) > 1 and _tokens_in_order(sp_tokens, exp_tokens):
+            return True
+    return False
+
+
 def _artists_match(expected: list[str], spotify_artists: list[str]) -> bool:
+    """
+    Return True when at least one expected artist matches the Spotify result.
+    """
     if any(_artist_matches(artist, spotify_artists) for artist in expected):
         return True
 
-    exp_norms = [_normalize(artist) for artist in expected]
-    if len(exp_norms) == 1 and " " not in exp_norms[0]:
-        return False
+    # at least one expected artist shares a word with a Spotify artist.
+    sp_token_pool = {
+        tok
+        for name in spotify_artists
+        for tok in _normalize(name).split()
+        if len(tok) >= 3
+    }
+    for artist in expected:
+        exp_tokens = [t for t in _normalize(artist).split() if len(t) >= 3]
+        if exp_tokens and any(t in sp_token_pool for t in exp_tokens):
+            matched = [t for t in exp_tokens if t in sp_token_pool]
+            if any(len(m) >= 4 for m in matched):
+                return True
 
-    matched = set()
-    for name in spotify_artists:
-        for token in _normalize(name).split():
-            if token in exp_norms:
-                matched.add(token)
-    return len(matched) >= min(2, len(exp_norms))
+    return False
 
 
 def _is_valid_match(search: SongSearch, spotify_track: dict) -> bool:
+    """
+    Validate whether a Spotify search result is the right song for `search`.
+    """
     spotify_name = spotify_track["name"]
     spotify_artists = [a["name"] for a in spotify_track["artists"]]
 
     if _track_matches(search.track, spotify_name):
         if search.artists and not _artists_match(search.artists, spotify_artists):
+            # Track title matches but wrong artist: reject.
             return False
         return True
 
-    if not search.artists:
-        return False
-
-    for candidate_track in search.artists:
-        if _track_matches(candidate_track, spotify_name):
-            if _artists_match([search.track], spotify_artists):
-                return True
+    if search.artists:
+        for candidate_track in search.artists:
+            if _track_matches(candidate_track, spotify_name):
+                if _artists_match([search.track], spotify_artists):
+                    return True
 
     return False
 
@@ -269,6 +309,7 @@ def _parse_song_title(title: str) -> SongSearch | None:
     if not title or title.strip().lower() in {"private video", "deleted video"}:
         return None
     title = html.unescape(title)
+    title = _PIPE_TAIL.sub("", title)
 
     cleaned = _strip_brackets_and_parens(title)
     segments = [_clean_segment(s) for s in _SEGMENT_SPLIT.split(cleaned)]
