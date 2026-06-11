@@ -74,7 +74,7 @@ _FEATURE_PAREN = re.compile(
 _OTHER_PAREN = re.compile(r"\([^)]*\)")
 _PIPE_TAIL = re.compile(r"\s*\|.*$")
 _SEGMENT_SPLIT = re.compile(r"\s+[-–—]+\s*|\s*[-–—]+\s+")
-_ARTIST_SPLIT = re.compile(r"\s*(?:&|\+|,|vs\.?)\s*")
+_ARTIST_SPLIT = re.compile(r"\s*(?:&|\+|,)\s*|\s+x\s+|\s+vs\.?\s+", re.I)
 _FEAT_SPLIT = re.compile(r"\s*\bfeaturing\b\s*|\s*\bfeat\.?\s*|\s*\bft\.?\s*", re.I)
 _TRAILING_NOISE = re.compile(
     r"(?:\s+(?:official|music\s+video|video|audio|lyrics?|visualizer|"
@@ -221,7 +221,7 @@ def _track_matches(expected: str, spotify_name: str) -> bool:
             return True
 
     if len(exp_stripped) > 4:
-        if fuzz.token_sort_ratio(exp_stripped, got_stripped) > 85:
+        if fuzz.ratio(exp_stripped, got_stripped) > 80:
             return True
 
     return False
@@ -525,8 +525,25 @@ async def done(request: Request):
     )
     async with httpx.AsyncClient(limits=limits) as client:
         profile_res = await client.get(ME_URL, headers=headers)
-        profile_data = profile_res.json()
+        
+        # If the token is expired, refresh it inline once
+        if profile_res.status_code == 401 and tokens.get("refresh_token"):
+            refresh_res = await client.post(
+                TOKEN_URL,
+                auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET),
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": tokens["refresh_token"],
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            if refresh_res.status_code == 200:
+                tokens["access_token"] = refresh_res.json().get("access_token")
+                request.session["tokens"] = tokens
+                headers["Authorization"] = f"Bearer {tokens['access_token']}"
+                profile_res = await client.get(ME_URL, headers=headers)
 
+        profile_data = profile_res.json()
         if profile_res.status_code != 200:
             logger.error(
                 "Failed to get profile info: %s",

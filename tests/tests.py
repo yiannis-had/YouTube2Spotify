@@ -1,4 +1,10 @@
+import os
+import sys
 import unittest
+
+sys.path.insert(
+    0, os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+)
 
 from youtube2spotify import (
     SongSearch,
@@ -26,7 +32,7 @@ PARSE_SONG_TITLE_CASES = [
     ("Vivaldi - Four Seasons: Winter", "Four Seasons: Winter", ["Vivaldi"]),
     ("The Weeknd - Blinding Lights (Official Audio)", "Blinding Lights", ["The Weeknd"]),
     ("Armin van Buuren - Blah Blah Blah (Extended Mix)", "Blah Blah Blah", ["Armin van Buuren"]),
-    ("Bad Bunny x Jhayco - DÁKITI", "DÁKITI", ["Bad Bunny x Jhayco"]),
+    ("Bad Bunny x Jhayco - DÁKITI", "DÁKITI", ["Bad Bunny", "Jhayco"]),
     ("Rosalía - DESPECHÁ", "DESPECHÁ", ["Rosalía"]),
     ("BTS - Dynamite (Official MV)", "Dynamite", ["BTS"]),
     ("Adele - Hello (Official Video)", "Hello", ["Adele"]),
@@ -35,6 +41,9 @@ PARSE_SONG_TITLE_CASES = [
     ("Lofi - Jinsang - affection", "affection", ["Jinsang"]),
     ("Lady Gaga & Ariana Grande - Rain On Me", "Rain On Me", ["Lady Gaga", "Ariana Grande"]),
     ("Linkin Park / Jay-Z - Numb / Encore (Live 8 2005)", "Numb / Encore", ["Linkin Park / Jay-Z"]),
+    ("Lost [Official Music Video] - Linkin Park", "Linkin Park", ["Lost"]),
+    ("The Offspring - Pretty Fly (For A White Guy) (Official Music Video)", "Pretty Fly", ["The Offspring"]),
+    ("Nardo Drillz x Lollypopbeatz - Many Men (Official Music Video)", "Many Men", ["Nardo Drillz", "Lollypopbeatz"]),
     ("David Guetta - Titanium ft. Sia (Official Video)", "Titanium", ["David Guetta", "Sia"]),
     ("Ellie Goulding - Bittersweet (Spectrum Remix)", "Bittersweet", ["Ellie Goulding"]),
     ("Flight Facilities - Crave You (Adventure Club Dubstep Remix) (feat. Giselle)", "Crave You", ["Flight Facilities", "Giselle"]),
