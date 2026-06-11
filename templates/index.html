@@ -19,33 +19,21 @@
   <form method="POST" action="/">
     <div class="form-group">
       <label for="youtube_playlist">playlist url</label>
-      <input
-        type="url"
-        id="youtube_playlist"
-        name="youtube_playlist"
-        value="{{ youtube_playlist }}"
+      <input type="url" id="youtube_playlist" name="youtube_playlist" value="{{ youtube_playlist }}"
         placeholder="https://www.youtube.com/playlist?list=..."
-        class="{% if errors.get('youtube_playlist') %}is-invalid{% endif %}"
-        required
-      >
+        class="{% if errors.get('youtube_playlist') %}is-invalid{% endif %}" required>
       {% if errors.get('youtube_playlist') %}
-        <p class="error-msg">{{ errors.youtube_playlist }}</p>
+      <p class="error-msg">{{ errors.youtube_playlist }}</p>
       {% endif %}
     </div>
 
     <div class="form-group">
       <label for="spotify_playlist_name">new playlist name</label>
-      <input
-        type="text"
-        id="spotify_playlist_name"
-        name="spotify_playlist_name"
-        value="{{ spotify_playlist_name }}"
-        placeholder="late night chill"
-        class="{% if errors.get('spotify_playlist_name') %}is-invalid{% endif %}"
-        required
-      >
+      <input type="text" id="spotify_playlist_name" name="spotify_playlist_name" value="{{ spotify_playlist_name }}"
+        placeholder="late night chill" class="{% if errors.get('spotify_playlist_name') %}is-invalid{% endif %}"
+        required>
       {% if errors.get('spotify_playlist_name') %}
-        <p class="error-msg">{{ errors.spotify_playlist_name }}</p>
+      <p class="error-msg">{{ errors.spotify_playlist_name }}</p>
       {% endif %}
     </div>
 
