@@ -13,6 +13,7 @@ import httpx
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
+from rapidfuzz import fuzz
 from starlette.middleware.sessions import SessionMiddleware
 
 logger = logging.getLogger(__name__)
@@ -73,16 +74,11 @@ _FEATURE_PAREN = re.compile(
 _OTHER_PAREN = re.compile(r"\([^)]*\)")
 _PIPE_TAIL = re.compile(r"\s*\|.*$")
 _SEGMENT_SPLIT = re.compile(r"\s+[-–—]+\s*|\s*[-–—]+\s+")
-_ARTIST_SPLIT = re.compile(r"\s*(?:&|\+)\s*")
+_ARTIST_SPLIT = re.compile(r"\s*(?:&|\+|,|vs\.?)\s*")
 _FEAT_SPLIT = re.compile(r"\s*\bfeaturing\b\s*|\s*\bfeat\.?\s*|\s*\bft\.?\s*", re.I)
 _TRAILING_NOISE = re.compile(
     r"(?:\s+(?:official|music\s+video|video|audio|lyrics?|visualizer|"
-    r"teaser|trailer|preview|hd|hq|4k|1080p?|mv|m/?v|full|extended|mix))+\s*$",
-    re.I,
-)
-_JUNK_SEGMENT = re.compile(
-    r"^(?:official|audio|video|lyrics?|music\s*video|mv|hd|4k|visualizer|"
-    r"teaser|trailer|preview|remaster(?:ed)?|live|cover|topic|explicit|clean)\s*$",
+    r"teaser|trailer|preview|hd|hq|4k|1080p?|mv|m/?v|full|extended|mix|remaster(?:ed)?|cover|topic|explicit|clean))+\s*$",
     re.I,
 )
 _GENRES = frozenset({
@@ -123,19 +119,11 @@ def _parse_track_segment(segment: str) -> tuple[str, list[str]]:
 def _is_junk_segment(segment: str) -> bool:
     if not segment.strip() or len(segment) > 100:
         return True
-    if _JUNK_SEGMENT.match(segment):
-        return True
     return False
 
 
 def _is_genre_segment(segment: str) -> bool:
     return segment.lower() in _GENRES
-
-
-def _looks_like_artist(segment: str) -> bool:
-    if re.search(r"(?:&|\+)", segment) or _FEAT_SPLIT.search(segment):
-        return True
-    return len(segment.split()) >= 2
 
 
 @dataclass(frozen=True)
@@ -222,18 +210,19 @@ def _track_matches(expected: str, spotify_name: str) -> bool:
 
     # all expected tokens must appear, in order, inside the (possibly longer) Spotify title.
     if len(exp_tokens) > 1 and _tokens_in_order(exp_tokens, got_tokens):
-        # The Spotify title must start with the expected tokens
-        # and the expected title should account for at least half the tokens
+        # The expected title should account for at least half the tokens
         if len(exp_tokens) >= len(got_tokens) // 2:
             return True
 
     # require single token to be a standalone word
     if len(exp_tokens) == 1:
         token = exp_tokens[0]
-        if len(token) < 4:
-            return exp_norm == got_norm
-        # Must appear as a complete token in the Spotify title
-        return token in got_tokens and got_tokens[0] == token
+        if token in got_tokens and got_tokens[0] == token:
+            return True
+
+    if len(exp_stripped) > 4:
+        if fuzz.token_sort_ratio(exp_stripped, got_stripped) > 85:
+            return True
 
     return False
 
@@ -256,6 +245,10 @@ def _artist_matches(expected: str, spotify_artists: list[str]) -> bool:
 
         if len(sp_tokens) > 1 and _tokens_in_order(sp_tokens, exp_tokens):
             return True
+
+        if fuzz.token_sort_ratio(exp_norm, norm) > 80:
+            return True
+
     return False
 
 
@@ -266,19 +259,11 @@ def _artists_match(expected: list[str], spotify_artists: list[str]) -> bool:
     if any(_artist_matches(artist, spotify_artists) for artist in expected):
         return True
 
-    # at least one expected artist shares a word with a Spotify artist.
-    sp_token_pool = {
-        tok
-        for name in spotify_artists
-        for tok in _normalize(name).split()
-        if len(tok) >= 3
-    }
-    for artist in expected:
-        exp_tokens = [t for t in _normalize(artist).split() if len(t) >= 3]
-        if exp_tokens and any(t in sp_token_pool for t in exp_tokens):
-            matched = [t for t in exp_tokens if t in sp_token_pool]
-            if any(len(m) >= 4 for m in matched):
-                return True
+    expected_combined = " ".join(_normalize(artist) for artist in expected)
+    spotify_combined = " ".join(_normalize(name) for name in spotify_artists)
+    
+    if fuzz.token_sort_ratio(expected_combined, spotify_combined) > 75:
+        return True
 
     return False
 
@@ -322,13 +307,24 @@ def _parse_song_title(title: str) -> SongSearch | None:
         return None
     
     if len(segments) == 1:
-        m = re.search(r"^(.*?)\s+(['\"].*)$", segments[0])
-        if m:
-            artist_segment = _clean_segment(m.group(1))
-            track_segment = _clean_segment(m.group(2))
+        # Artist "Track"
+        if m := re.search(r"^(.*?)\s+(['\"].*)$", segments[0]):
+            artist_segment = m.group(1)
+            track_segment = m.group(2)
+        # : ~ // ,
+        elif m := re.search(r"^(.*?)\s*(?::|~|//|,)\s*(.*)$", segments[0]):
+            artist_segment = m.group(1)
+            track_segment = m.group(2)
+        # Track by Artist
+        elif m := re.search(r"^(.*)\s+by\s+(.*)$", segments[0], re.I):
+            track_segment = m.group(1)
+            artist_segment = m.group(2)
         else:
             track, featured = _parse_track_segment(segments[0])
             return SongSearch(track=track, artists=featured)
+
+        artist_segment = _clean_segment(artist_segment)
+        track_segment = _clean_segment(track_segment)
     else:
         artist_segment = segments[0]
         track_segment = segments[1]
@@ -427,22 +423,24 @@ async def index_submit(
 
 
 @app.get("/login")
-@app.get("/logout")
-async def login(request: Request, loginout: str = ""):
-    path = request.url.path.lstrip("/")
-    if path not in ("login", "logout"):
-        raise HTTPException(status_code=404)
+async def login(request: Request):
+    if request.session.get("tokens"):
+        return RedirectResponse(url="/done", status_code=303)
 
     payload = {
         "client_id": SPOTIFY_CLIENT_ID,
         "response_type": "code",
         "redirect_uri": SPOTIFY_REDIRECT_URI,
         "scope": SPOTIFY_SCOPE,
+        "show_dialog": True,
     }
-    if path == "logout":
-        payload["show_dialog"] = True
-
     return RedirectResponse(f"{AUTH_URL}/?{urlencode(payload)}")
+
+
+@app.get("/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.get("/callback")
@@ -475,7 +473,7 @@ async def callback(request: Request, code: str | None = None, error: str | None 
         "access_token": res_data.get("access_token"),
         "refresh_token": res_data.get("refresh_token"),
     }
-    return RedirectResponse(url="/me", status_code=303)
+    return RedirectResponse(url="/done", status_code=303)
 
 
 @app.get("/refresh")
@@ -500,8 +498,8 @@ async def refresh(request: Request):
     return json.dumps(request.session["tokens"])
 
 
-@app.get("/me", response_class=HTMLResponse)
-async def me(request: Request):
+@app.get("/done", response_class=HTMLResponse)
+async def done(request: Request):
     youtube_playlist = request.session.get("youtube_playlist")
     spotify_playlist_name = request.session.get("spotify_playlist_name")
     if not youtube_playlist or not spotify_playlist_name:
@@ -560,7 +558,7 @@ async def me(request: Request):
             )
 
     return templates.TemplateResponse(
-        "me.html",
+        "done.html",
         {
             "request": request,
             "data": profile_data,

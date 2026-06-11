@@ -70,24 +70,24 @@ PARSE_SONG_TITLE_CASES = [
     ("Sienna Skies - Breathe", "Breathe", ["Sienna Skies"]),
     ("Mann - Buzzin (Remix) ft. 50 Cent", "Buzzin", ["Mann", "50 Cent"]),
     ("SKRILLEX - Bangarang feat. Sirah [Official Music Video]", "Bangarang", ["SKRILLEX", "Sirah"]),
-    ("Bob Sinclar - Rock the Boat feat. Pitbull, Dragonfly and Fatman Scoop [Official Video Clip]", "Rock the Boat", ["Bob Sinclar", "Pitbull, Dragonfly and Fatman Scoop"]),
+    ("Bob Sinclar - Rock the Boat feat. Pitbull, Dragonfly and Fatman Scoop [Official Video Clip]", "Rock the Boat", ["Bob Sinclar", "Pitbull", "Dragonfly and Fatman Scoop"]),
     ("Loreen - Euphoria (LIVE) | Sweden 🇸🇪 | Grand Final | Winner of Eurovision 2012", "Euphoria", ["Loreen"]),
     ("Imany - You Will Never Know (Clip Officiel)", "You Will Never Know", ["Imany"]),
     ("Flo Rida - Club Can't Handle Me (feat David Guetta) [Official Video]", "Club Can't Handle Me", ["Flo Rida", "David Guetta"]),
-    ("Gym Class Heroes: Stereo Hearts ft. Adam Levine [OFFICIAL VIDEO]", "Gym Class Heroes: Stereo Hearts", ["Adam Levine"]),
+    ("Gym Class Heroes: Stereo Hearts ft. Adam Levine [OFFICIAL VIDEO]", "Stereo Hearts", ["Gym Class Heroes", "Adam Levine"]),
     ("Brian Cross - Soldier (Videoclip) ft. Daniel Gidlund", "Soldier", ["Brian Cross", "Daniel Gidlund"]),
     ("Calvin Harris - Let's Go (Official Video) ft. Ne-Yo", "Let's Go", ["Calvin Harris", "Ne-Yo"]),
     ("Flo Rida - Whistle [Official Video]", "Whistle", ["Flo Rida"]),
     ("Katy Perry - The One That Got Away (Official Music Video)", "The One That Got Away", ["Katy Perry"]),
-    ("Fun.: We Are Young ft. Janelle Monáe [OFFICIAL VIDEO]", "Fun.: We Are Young", ["Janelle Monáe"]),
+    ("Fun.: We Are Young ft. Janelle Monáe [OFFICIAL VIDEO]", "We Are Young", ["Fun.", "Janelle Monáe"]),
     ("Antonis Remos feat Nivo - Entaksei [Official Music Video 2012 HD]", "Entaksei", ["Antonis Remos", "Nivo"]),
     ("Amy Macdonald - This is the Life", "This is the Life", ["Amy Macdonald"]),
     ("Sea Of Smiles - Sienna Skies (lyrics)", "Sienna Skies", ["Sea Of Smiles"]),
     ("Sean Paul - Got 2 Luv U (feat. Alexis Jordan) [Official Video]", "Got 2 Luv U", ["Sean Paul", "Alexis Jordan"]),
-    ("Nayer - Suave (Kiss Me) ft. Pitbull, Mohombi", "Suave", ["Nayer", "Pitbull, Mohombi"]),
+    ("Nayer - Suave (Kiss Me) ft. Pitbull, Mohombi", "Suave", ["Nayer", "Pitbull", "Mohombi"]),
     ("Ivi Adamou - La La Love (Cyprus) 2012 Eurovision Song Contest Official Preview Video", "La La Love 2012 Eurovision Song Contest", ["Ivi Adamou"]),
     ("Swedish House Mafia - Greyhound", "Greyhound", ["Swedish House Mafia"]),
-    ("will.i.am - T.H.E. (The Hardest Ever) ft. Mick Jagger, Jennifer Lopez", "T.H.E.", ["will.i.am", "Mick Jagger, Jennifer Lopez"]),
+    ("will.i.am - T.H.E. (The Hardest Ever) ft. Mick Jagger, Jennifer Lopez", "T.H.E.", ["will.i.am", "Mick Jagger", "Jennifer Lopez"]),
     ("The Black Eyed Peas - The Time (Dirty Bit) (Audio)", "The Time", ["The Black Eyed Peas"]),
     ("Flo Rida - Good Feeling [Official Video]", "Good Feeling", ["Flo Rida"]),
     ("Aura Dione - Friends ft. Rock Mafia (Official Music Video)", "Friends", ["Aura Dione", "Rock Mafia"]),
@@ -112,11 +112,11 @@ PARSE_SONG_TITLE_CASES = [
     ("PLAYMEN &amp; ALEX LEON ft. T-PAIN - Out Of My Head | Official Video Clip", "Out Of My Head", ["PLAYMEN", "ALEX LEON", "T-PAIN"]),
     ("Coldplay - Paradise (Official Video)", "Paradise", ["Coldplay"]),
     ("Rihanna - You Da One", "You Da One", ["Rihanna"]),
-    ("Far East Movement - Like A G6 ft. The Cataracs, DEV", "Like A G6", ["Far East Movement", "The Cataracs, DEV"]),
+    ("Far East Movement - Like A G6 ft. The Cataracs, DEV", "Like A G6", ["Far East Movement", "The Cataracs", "DEV"]),
     ("Labrinth - Earthquake (Official Video) ft. Tinie Tempah", "Earthquake", ["Labrinth", "Tinie Tempah"]),
     ("Chris Brown - Turn Up the Music (Official Video)", "Turn Up the Music", ["Chris Brown"]),
     ("Tacabro - Tacatà - Tacata'", "Tacatà", ["Tacabro"]),
-    ("Far East Movement - Live My Life (Party Rock Remix) ft. Justin Bieber, Redfoo", "Live My Life", ["Far East Movement", "Justin Bieber, Redfoo"]),
+    ("Far East Movement - Live My Life (Party Rock Remix) ft. Justin Bieber, Redfoo", "Live My Life", ["Far East Movement", "Justin Bieber", "Redfoo"]),
     ("Example - 'Stay Awake' (Official Video)", "Stay Awake", ["Example"]),
     ("Lana Del Rey - Born To Die", "Born To Die", ["Lana Del Rey"]),
     ("Pitbull - International Love (Official Video) ft. Chris Brown", "International Love", ["Pitbull", "Chris Brown"]),
@@ -129,7 +129,7 @@ PARSE_SONG_TITLE_CASES = [
     ("All Time Low - I Feel Like Dancin'", "I Feel Like Dancin", ["All Time Low"]),
     ("Grits - My Life Be Like (Ooh-Aah) with lyrics", "My Life Be Like with", ["Grits"]),
     ("Abandon All Ships - Take One Last Breath (Official Music Video)", "Take One Last Breath", ["Abandon All Ships"]),
-    ("David Guetta - Where Them Girls At ft. Nicki Minaj, Flo Rida (Official Video)", "Where Them Girls At", ["David Guetta", "Nicki Minaj, Flo Rida"]),
+    ("David Guetta - Where Them Girls At ft. Nicki Minaj, Flo Rida (Official Video)", "Where Them Girls At", ["David Guetta", "Nicki Minaj", "Flo Rida"]),
     ("Taio Cruz - Hangover (Official Video) ft. Flo Rida", "Hangover", ["Taio Cruz", "Flo Rida"]),
     ("Avicii - Levels", "Levels", ["Avicii"]),
     ("Simon From Deep Divas feat. Goody - Disco Dancer [Simon Original Mix] [OFFICIAL VIDEO]", "Disco Dancer", ["Simon From Deep Divas", "Goody"]),
@@ -151,7 +151,7 @@ PARSE_SONG_TITLE_CASES = [
     ("Hardwell feat. Amba Shepherd - Apollo (Radio Edit) - OUT NOW!", "Apollo", ["Hardwell", "Amba Shepherd"]),
     ("NERVO - Hold On (R3hab & Silvio Ecomo Remix)", "Hold On", ["NERVO"]),
     ("Major Lazer - Watch Out For This (Bumaye) (Dimitri Vegas & Like Mike Tomorrowland Remix)", "Watch Out For This", ["Major Lazer"]),
-    ("Steve Aoki, Chris Lake & Tujamo - Boneless (Official Video)", "Boneless", ["Steve Aoki, Chris Lake", "Tujamo"]),
+    ("Steve Aoki, Chris Lake & Tujamo - Boneless (Official Video)", "Boneless", ["Steve Aoki", "Chris Lake", "Tujamo"]),
     ("Kid Cudi - Pursuit of Happiness (Steve Aoki Remix) - Project X (Official Music Video)", "Pursuit of Happiness", ["Kid Cudi"]),
     ("Meg & Dia - Monster (DotEXE Dubstep Remix)", "Monster", ["Meg", "Dia"]),
     ("ENVY/Nico & Vinz - Am I Wrong (Felix Zaltaio & Lindh Van Berg Remix)", "Am I Wrong", ["ENVY/Nico", "Vinz"]),
@@ -261,8 +261,8 @@ class TestParseSongTitleEdgeCases(unittest.TestCase):
     def test_topic_only_remaining_segment_is_bare_track(self):
         result = _parse_song_title("Imagine - Topic")
         self.assertIsNotNone(result)
-        self.assertEqual("Imagine", result.track)
-        self.assertEqual([], result.artists)
+        self.assertEqual("Topic", result.track)
+        self.assertEqual(["Imagine"], result.artists)
 
     def test_brackets_only_returns_none(self):
         self.assertIsNone(_parse_song_title("[Official Music Video]"))

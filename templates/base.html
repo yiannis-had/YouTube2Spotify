@@ -1,309 +1,333 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    {% block head %}
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}YouTube2Spotify{% endblock %}</title>
-    <link rel="icon" type="image/png" href="/favicon.ico">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Syne:wght@700;800&display=swap" rel="stylesheet">
-    <style>
-      :root {
-        --paper: #f7f2ea;
-        --ink: #14110f;
-        --muted: #5c5349;
-        --yt: #ff0000;
-        --spotify: #1db954;
-        --line: #14110f;
-        --error: #c0392b;
-      }
 
-      * { box-sizing: border-box; margin: 0; padding: 0; }
+<head>
+  {% block head %}
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}YouTube2Spotify{% endblock %}</title>
+  <link rel="icon" type="image/png" href="/favicon.ico">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Syne:wght@700;800&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --paper: #f7f2ea;
+      --ink: #14110f;
+      --muted: #5c5349;
+      --yt: #ff0000;
+      --spotify: #1db954;
+      --line: #14110f;
+      --error: #c0392b;
+    }
 
-      body {
-        font-family: "IBM Plex Mono", "Courier New", monospace;
-        font-size: 14px;
-        line-height: 1.55;
-        color: var(--ink);
-        background: var(--paper);
-        min-height: 100vh;
-      }
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-      body::before {
-        content: "";
-        position: fixed;
-        inset: 0;
-        background:
-          repeating-linear-gradient(
-            0deg,
-            transparent,
-            transparent 27px,
-            rgba(20, 17, 15, 0.04) 27px,
-            rgba(20, 17, 15, 0.04) 28px
-          );
-        pointer-events: none;
-        z-index: 0;
-      }
+    body {
+      font-family: "IBM Plex Mono", "Courier New", monospace;
+      font-size: 14px;
+      line-height: 1.55;
+      color: var(--ink);
+      background: var(--paper);
+      min-height: 100vh;
+    }
 
-      .wrap {
-        position: relative;
-        z-index: 1;
-        max-width: 640px;
-        margin: 0 auto;
-        padding: 2.5rem 1.25rem 3rem;
-      }
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        repeating-linear-gradient(0deg,
+          transparent,
+          transparent 27px,
+          rgba(20, 17, 15, 0.04) 27px,
+          rgba(20, 17, 15, 0.04) 28px);
+      pointer-events: none;
+      z-index: 0;
+    }
 
-      .masthead {
-        margin-bottom: 2rem;
-        padding-bottom: 1rem;
-        border-bottom: 3px solid var(--line);
-      }
+    .wrap {
+      position: relative;
+      z-index: 1;
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 2.5rem 1.25rem 3rem;
+    }
 
-      .masthead h1 {
-        font-family: "Syne", sans-serif;
-        font-size: clamp(2.4rem, 9vw, 3.6rem);
-        font-weight: 800;
-        line-height: 0.95;
-        letter-spacing: -0.03em;
-        text-transform: lowercase;
-      }
+    .masthead {
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 3px solid var(--line);
+    }
 
-      .masthead h1 em {
-        font-style: normal;
-        color: var(--yt);
-      }
+    .masthead h1 {
+      font-family: "Syne", sans-serif;
+      font-size: clamp(2.4rem, 9vw, 3.6rem);
+      font-weight: 800;
+      line-height: 0.95;
+      letter-spacing: -0.03em;
+      text-transform: lowercase;
+    }
 
-      .masthead h1 strong {
-        font-weight: 800;
-        color: var(--spotify);
-      }
+    .masthead h1 em {
+      font-style: normal;
+      color: var(--yt);
+    }
 
-      .tagline {
-        margin-top: 0.75rem;
-        color: var(--muted);
-        max-width: 38ch;
-      }
+    .masthead h1 strong {
+      font-weight: 800;
+      color: var(--spotify);
+    }
 
-      .panel {
-        background: #fff;
-        border: 3px solid var(--line);
-        box-shadow: 6px 6px 0 var(--line);
-        padding: 1.5rem;
-      }
+    .tagline {
+      margin-top: 0.75rem;
+      color: var(--muted);
+      max-width: 38ch;
+    }
 
-      .flow {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        margin-bottom: 1.5rem;
-        font-family: "Syne", sans-serif;
-        font-weight: 700;
-        font-size: 0.85rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-      }
+    .panel {
+      background: #fff;
+      border: 3px solid var(--line);
+      box-shadow: 6px 6px 0 var(--line);
+      padding: 1.5rem;
+    }
 
-      .flow .from { color: var(--yt); }
-      .flow .to { color: var(--spotify); }
-      .flow .arrow {
-        flex: 1;
-        height: 2px;
-        background: repeating-linear-gradient(
-          90deg,
+    .flow {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      font-family: "Syne", sans-serif;
+      font-weight: 700;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .flow .from {
+      color: var(--yt);
+    }
+
+    .flow .to {
+      color: var(--spotify);
+    }
+
+    .flow .arrow {
+      flex: 1;
+      height: 2px;
+      background: repeating-linear-gradient(90deg,
           var(--line) 0 6px,
-          transparent 6px 12px
-        );
-        min-width: 2rem;
-      }
+          transparent 6px 12px);
+      min-width: 2rem;
+    }
 
-      .form-group { margin-bottom: 1.25rem; }
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
 
-      label {
-        display: block;
-        margin-bottom: 0.35rem;
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-      }
+    label {
+      display: block;
+      margin-bottom: 0.35rem;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
 
-      input[type="text"],
-      input[type="url"] {
-        width: 100%;
-        padding: 0.65rem 0.75rem;
-        border: 2px solid var(--line);
-        background: var(--paper);
-        color: var(--ink);
-        font: inherit;
-      }
+    input[type="text"],
+    input[type="url"] {
+      width: 100%;
+      padding: 0.65rem 0.75rem;
+      border: 2px solid var(--line);
+      background: var(--paper);
+      color: var(--ink);
+      font: inherit;
+    }
 
-      input:focus {
-        outline: 2px solid var(--spotify);
-        outline-offset: 2px;
-      }
+    input:focus {
+      outline: 2px solid var(--spotify);
+      outline-offset: 2px;
+    }
 
-      input.is-invalid {
-        border-color: var(--error);
-        background: #fff5f5;
-      }
+    input.is-invalid {
+      border-color: var(--error);
+      background: #fff5f5;
+    }
 
-      .error-msg {
-        margin-top: 0.35rem;
-        color: var(--error);
-        font-size: 0.8rem;
-      }
+    .error-msg {
+      margin-top: 0.35rem;
+      color: var(--error);
+      font-size: 0.8rem;
+    }
 
-      .btn {
-        display: inline-block;
-        padding: 0.75rem 1.25rem;
-        border: 2px solid var(--line);
-        background: var(--ink);
-        color: #fff;
-        font: inherit;
-        font-weight: 500;
-        text-decoration: none;
-        cursor: pointer;
-        box-shadow: 4px 4px 0 var(--spotify);
-        transition: transform 0.1s, box-shadow 0.1s;
-      }
+    .btn {
+      display: inline-block;
+      padding: 0.75rem 1.25rem;
+      border: 2px solid var(--line);
+      background: var(--ink);
+      color: #fff;
+      font: inherit;
+      font-weight: 500;
+      text-decoration: none;
+      cursor: pointer;
+      box-shadow: 4px 4px 0 var(--spotify);
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
 
-      .btn:hover {
-        transform: translate(-1px, -1px);
-        box-shadow: 5px 5px 0 var(--spotify);
-      }
+    .btn:hover {
+      transform: translate(-1px, -1px);
+      box-shadow: 5px 5px 0 var(--spotify);
+    }
 
-      .btn:active {
-        transform: translate(2px, 2px);
-        box-shadow: 2px 2px 0 var(--spotify);
-      }
+    .btn:active {
+      transform: translate(2px, 2px);
+      box-shadow: 2px 2px 0 var(--spotify);
+    }
 
-      .btn-full { width: 100%; text-align: center; }
+    .btn-full {
+      width: 100%;
+      text-align: center;
+    }
 
-      .btn-ghost {
-        background: transparent;
-        color: var(--ink);
-        box-shadow: 4px 4px 0 var(--line);
-        font-size: 0.8rem;
-      }
+    .btn-ghost {
+      background: transparent;
+      color: var(--ink);
+      box-shadow: 4px 4px 0 var(--line);
+      font-size: 0.8rem;
+    }
 
-      .btn-ghost:hover { box-shadow: 5px 5px 0 var(--line); }
-      .btn-ghost:active { box-shadow: 2px 2px 0 var(--line); }
+    .btn-ghost:hover {
+      box-shadow: 5px 5px 0 var(--line);
+    }
 
-      .aside {
-        margin-top: 1.25rem;
-        padding-left: 0.75rem;
-        border-left: 3px solid var(--yt);
-        color: var(--muted);
-        font-size: 0.8rem;
-      }
+    .btn-ghost:active {
+      box-shadow: 2px 2px 0 var(--line);
+    }
 
-      .done-badge {
-        display: inline-block;
-        margin-bottom: 1rem;
-        padding: 0.25rem 0.6rem;
-        background: var(--spotify);
-        color: #000;
-        font-family: "Syne", sans-serif;
-        font-weight: 700;
-        font-size: 0.75rem;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-      }
+    .aside {
+      margin-top: 1.25rem;
+      padding-left: 0.75rem;
+      border-left: 3px solid var(--yt);
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
 
-      .profile {
-        display: flex;
-        gap: 1rem;
-        align-items: center;
-        margin-bottom: 1.5rem;
-      }
+    .done-badge {
+      display: inline-block;
+      margin-bottom: 1rem;
+      padding: 0.25rem 0.6rem;
+      background: var(--spotify);
+      color: #000;
+      font-family: "Syne", sans-serif;
+      font-weight: 700;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
 
-      .avatar {
-        width: 72px;
-        height: 72px;
-        border: 3px solid var(--line);
-        object-fit: cover;
-        flex-shrink: 0;
-      }
+    .profile {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      margin-bottom: 1.5rem;
+    }
 
-      .avatar-fallback {
-        width: 72px;
-        height: 72px;
-        border: 3px solid var(--line);
-        background: var(--paper);
-        display: grid;
-        place-items: center;
-        font-family: "Syne", sans-serif;
-        font-weight: 800;
-        font-size: 1.5rem;
-        flex-shrink: 0;
-      }
+    .avatar {
+      width: 72px;
+      height: 72px;
+      border: 3px solid var(--line);
+      object-fit: cover;
+      flex-shrink: 0;
+    }
 
-      .profile h2 {
-        font-family: "Syne", sans-serif;
-        font-size: 1.35rem;
-        font-weight: 700;
-        line-height: 1.2;
-      }
+    .avatar-fallback {
+      width: 72px;
+      height: 72px;
+      border: 3px solid var(--line);
+      background: var(--paper);
+      display: grid;
+      place-items: center;
+      font-family: "Syne", sans-serif;
+      font-weight: 800;
+      font-size: 1.5rem;
+      flex-shrink: 0;
+    }
 
-      .profile h2 span { color: var(--spotify); }
+    .profile h2 {
+      font-family: "Syne", sans-serif;
+      font-size: 1.35rem;
+      font-weight: 700;
+      line-height: 1.2;
+    }
 
-      .result-list {
-        list-style: none;
-        border-top: 2px solid var(--line);
-      }
+    .profile h2 span {
+      color: var(--spotify);
+    }
 
-      .result-list li {
-        padding: 0.85rem 0;
-        border-bottom: 2px solid var(--line);
-      }
+    .result-list {
+      list-style: none;
+      border-top: 2px solid var(--line);
+    }
 
-      .result-list .k {
-        display: block;
-        font-size: 0.7rem;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: var(--muted);
-        margin-bottom: 0.2rem;
-      }
+    .result-list li {
+      padding: 0.85rem 0;
+      border-bottom: 2px solid var(--line);
+    }
 
-      .result-list a {
-        color: var(--ink);
-        word-break: break-all;
-      }
+    .result-list .k {
+      display: block;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 0.2rem;
+    }
 
-      .result-list a:hover { color: var(--spotify); }
+    .result-list a {
+      color: var(--ink);
+      word-break: break-all;
+    }
 
-      .actions {
-        margin-top: 1.5rem;
-        display: flex;
-        justify-content: flex-end;
-      }
+    .result-list a:hover {
+      color: var(--spotify);
+    }
 
-      .site-footer {
-        margin-top: 2.5rem;
-        padding-top: 1rem;
-        border-top: 1px dashed var(--muted);
-        font-size: 0.75rem;
-        color: var(--muted);
-      }
+    .actions {
+      margin-top: 1.5rem;
+      display: flex;
+      justify-content: flex-end;
+    }
 
-      .site-footer a {
-        color: var(--ink);
-        text-decoration: underline;
-        text-underline-offset: 3px;
-      }
-    </style>
-    {% endblock %}
-  </head>
-  <body>
-    <div class="wrap">
-      {% block header %}{% endblock %}
-      {% block content %}{% endblock %}
-      <footer class="site-footer">
-        <a href="https://github.com/yiannis-had/YouTube2Spotify" target="_blank" rel="noopener">source on github</a>
-        · by <a href="https://github.com/yiannis-had" target="_blank" rel="noopener">yiannis-had</a>
-      </footer>
-    </div>
-  </body>
+    .site-footer {
+      margin-top: 2.5rem;
+      padding-top: 1rem;
+      border-top: 1px dashed var(--muted);
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .site-footer a {
+      color: var(--ink);
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+  </style>
+  {% endblock %}
+</head>
+
+<body>
+  <div class="wrap">
+    {% block header %}{% endblock %}
+    {% block content %}{% endblock %}
+    <footer class="site-footer">
+      <a href="https://github.com/yiannis-had/youtube2spotify" target="_blank" rel="noopener">source on github</a>
+      · by <a href="https://github.com/yiannis-had" target="_blank" rel="noopener">yiannis-had</a>
+    </footer>
+  </div>
+</body>
+
 </html>
