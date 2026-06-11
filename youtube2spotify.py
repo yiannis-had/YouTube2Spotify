@@ -568,6 +568,11 @@ async def done(request: Request):
                 for video in videos
             ]
         )
+        unmatched_titles = [
+            video["snippet"]["title"]
+            for video, uri in zip(videos, track_uris)
+            if not uri
+        ]
         matched_uris = [uri for uri in track_uris if uri]
         if matched_uris:
             await _add_tracks_to_playlist(
@@ -580,6 +585,9 @@ async def done(request: Request):
             "request": request,
             "data": profile_data,
             "playlist": playlist_data,
+            "matched_count": len(matched_uris),
+            "total_count": len(track_uris),
+            "unmatched_titles": unmatched_titles,
         },
     )
 
