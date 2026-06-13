@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import unicodedata
+import uuid
 from dataclasses import dataclass
 from urllib.parse import urlencode
 
@@ -25,6 +26,9 @@ app.add_middleware(
 )
 templates = Jinja2Templates(directory="templates")
 
+# Server-side memory storage for migration results (keeps cookies empty and safe)
+MIGRATION_CACHE = {}
+
 BASE_URI = os.environ.get("BASE_URI", "http://127.0.0.1:8080")
 
 DEVELOPER_KEY = os.environ.get("YOUTUBE_DEVELOPER_KEY", "")
@@ -42,7 +46,7 @@ SPOTIFY_SCOPE = (
     "playlist-modify-public playlist-modify-private"
 )
 
-SEARCH_CONCURRENCY = int(os.environ.get("SEARCH_CONCURRENCY", "20"))
+SEARCH_CONCURRENCY = int(os.environ.get("SEARCH_CONCURRENCY", "10"))
 PLAYLIST_BATCH_SIZE = 100
 
 
@@ -69,16 +73,19 @@ def _fetch_youtube_playlist_items(playlist_id: str) -> list:
 
 _BRACKETS = re.compile(r"\[[^\]]*\]")
 _FEATURE_PAREN = re.compile(
-    r"\(([^)]*(?:ft\.?|feat\.?|featuring)[^)]*)\)", re.I
+    r"\(([^)]*(?:ft\.?|feat\.?|featuring|cover|by)[^)]*)\)", re.I
 )
 _OTHER_PAREN = re.compile(r"\([^)]*\)")
 _PIPE_TAIL = re.compile(r"\s*\|.*$")
 _SEGMENT_SPLIT = re.compile(r"\s+[-–—]+\s*|\s*[-–—]+\s+")
 _ARTIST_SPLIT = re.compile(r"\s*(?:&|\+|,)\s*|\s+x\s+|\s+vs\.?\s+", re.I)
-_FEAT_SPLIT = re.compile(r"\s*\bfeaturing\b\s*|\s*\bfeat\.?\s*|\s*\bft\.?\s*", re.I)
+_FEAT_SPLIT = re.compile(
+    r"\s*\bfeaturing\b\s*|\s*\bfeat\.?\s*|\s*\bft\.?\s*|\s*\bcover(?:ed)?(?:\s+by)?\b\s*", re.I
+)
 _TRAILING_NOISE = re.compile(
-    r"(?:\s+(?:official|music\s+video|video|audio|lyrics?|visualizer|"
-    r"teaser|trailer|preview|hd|hq|4k|1080p?|mv|m/?v|full|extended|mix|remaster(?:ed)?|cover|topic|explicit|clean))+\s*$",
+    r"(?:\s+(?:official|music\s+video|video|audio|lyrics?|with\s+lyrics|visualizer|"
+    r"teaser|trailer|preview|hd|hq|4k|1080p?|mv|m/?v|full|extended|mix|remaster(?:ed)?|"
+    r"cover|topic|explicit|clean|eurovision(?:\s+song\s+contest)?|live|performance|karaoke|\d{4}))+\s*$",
     re.I,
 )
 _GENRES = frozenset({
@@ -149,7 +156,7 @@ def _strip_brackets_and_parens(text: str) -> str:
 
 
 def _normalize(text: str) -> str:
-    text = text.lower()
+    text = text.lower().replace("$", "s")
     text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("utf-8")
     text = re.sub(r"[^\w\s']", " ", text)
     return " ".join(text.split())
@@ -347,14 +354,36 @@ async def _find_track_uri(
 
     async with semaphore:
         for song_query in song_search.queries():
-            search_res = await client.get(
-                "https://api.spotify.com/v1/search",
-                params={"q": song_query, "limit": "5", "type": "track"},
-                headers=headers,
-            )
-            for item in search_res.json().get("tracks", {}).get("items", []):
-                if _is_valid_match(song_search, item):
-                    return item["uri"]
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    search_res = await client.get(
+                        "https://api.spotify.com/v1/search",
+                        params={"q": song_query, "limit": "5", "type": "track"},
+                        headers=headers,
+                    )
+                    
+                    if search_res.status_code == 200:
+                        for item in search_res.json().get("tracks", {}).get("items", []):
+                            if _is_valid_match(song_search, item):
+                                return item["uri"]
+                        break
+                    
+                    elif search_res.status_code == 429:
+                        retry_after = int(search_res.headers.get("Retry-After", 2))
+                        logger.warning(
+                            "Spotify API rate limit hit for query %r. Waiting %d seconds (attempt %d/%d)...",
+                            song_query, retry_after, attempt + 1, max_retries
+                        )
+                        await asyncio.sleep(retry_after)
+                    
+                    else:
+                        logger.error("Spotify search returned status code %d", search_res.status_code)
+                        break
+                        
+                except httpx.HTTPError as e:
+                    logger.warning("Network issue during track search: %s. Retrying...", e)
+                    await asyncio.sleep(1)
 
     logger.info("No confident match for %r", video_title)
     return None
@@ -368,11 +397,34 @@ async def _add_tracks_to_playlist(
 ) -> None:
     for i in range(0, len(track_uris), PLAYLIST_BATCH_SIZE):
         chunk = track_uris[i : i + PLAYLIST_BATCH_SIZE]
-        await client.post(
-            f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks",
-            json={"uris": chunk},
-            headers=headers,
-        )
+        
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                res = await client.post(
+                    f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks",
+                    json={"uris": chunk},
+                    headers=headers,
+                )
+                
+                if res.status_code in (200, 201):
+                    break
+                
+                elif res.status_code == 429:
+                    retry_after = int(res.headers.get("Retry-After", 2))
+                    logger.warning(
+                        "Rate limited adding tracks to playlist. Waiting %d seconds (attempt %d/%d)...",
+                        retry_after, attempt + 1, max_retries
+                    )
+                    await asyncio.sleep(retry_after)
+                
+                else:
+                    logger.error("Failed to add tracks chunk with status %d: %s", res.status_code, res.text)
+                    break
+                    
+            except httpx.HTTPError as e:
+                logger.warning("Network error while adding tracks: %s. Retrying...", e)
+                await asyncio.sleep(1)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -425,7 +477,7 @@ async def index_submit(
 @app.get("/login")
 async def login(request: Request):
     if request.session.get("tokens"):
-        return RedirectResponse(url="/done", status_code=303)
+        return RedirectResponse(url="/processing", status_code=303)
 
     payload = {
         "client_id": SPOTIFY_CLIENT_ID,
@@ -473,7 +525,7 @@ async def callback(request: Request, code: str | None = None, error: str | None 
         "access_token": res_data.get("access_token"),
         "refresh_token": res_data.get("refresh_token"),
     }
-    return RedirectResponse(url="/done", status_code=303)
+    return RedirectResponse(url="/processing", status_code=303)
 
 
 @app.get("/refresh")
@@ -498,24 +550,39 @@ async def refresh(request: Request):
     return json.dumps(request.session["tokens"])
 
 
-@app.get("/done", response_class=HTMLResponse)
-async def done(request: Request):
+@app.get("/processing", response_class=HTMLResponse)
+async def processing(request: Request):
     youtube_playlist = request.session.get("youtube_playlist")
     spotify_playlist_name = request.session.get("spotify_playlist_name")
     if not youtube_playlist or not spotify_playlist_name:
         return RedirectResponse(url="/", status_code=303)
+        
+    return templates.TemplateResponse("processing.html", {"request": request})
+
+
+@app.get("/start-migration")
+async def start_migration(request: Request):
+    """Triggered asynchronously by JavaScript on the processing page."""
+    youtube_playlist = request.session.get("youtube_playlist")
+    spotify_playlist_name = request.session.get("spotify_playlist_name")
+    if not youtube_playlist or not spotify_playlist_name:
+        raise HTTPException(status_code=400, detail="No playlist information configured.")
 
     playlist_match = re.findall(r"list=([^&]+)", youtube_playlist)
     if not playlist_match:
         raise HTTPException(status_code=400, detail="Invalid YouTube playlist URL.")
 
     playlist_id = playlist_match[0]
-    videos = await asyncio.to_thread(_fetch_youtube_playlist_items, playlist_id)
+    
+    try:
+        videos = await asyncio.to_thread(_fetch_youtube_playlist_items, playlist_id)
+    except Exception as e:
+        logger.error("Failed to fetch YouTube playlist items: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to fetch YouTube playlist items.")
 
     tokens = request.session.get("tokens")
     if not tokens:
-        logger.error("No tokens in session.")
-        raise HTTPException(status_code=400, detail="Not authenticated with Spotify.")
+        raise HTTPException(status_code=401, detail="Authentication token is missing.")
 
     headers = {"Authorization": f"Bearer {tokens['access_token']}"}
 
@@ -545,11 +612,8 @@ async def done(request: Request):
 
         profile_data = profile_res.json()
         if profile_res.status_code != 200:
-            logger.error(
-                "Failed to get profile info: %s",
-                profile_data.get("error", "No error message returned."),
-            )
-            raise HTTPException(status_code=profile_res.status_code)
+            logger.error("Failed to get profile info: %s", profile_data)
+            raise HTTPException(status_code=profile_res.status_code, detail="Failed to retrieve Spotify profile info.")
 
         playlist_res = await client.post(
             f"https://api.spotify.com/v1/users/{profile_data['id']}/playlists",
@@ -579,15 +643,50 @@ async def done(request: Request):
                 client, new_playlist_id, matched_uris, headers
             )
 
+    ticket = str(uuid.uuid4())
+    
+    MIGRATION_CACHE[ticket] = {
+        "profile_data": profile_data,
+        "playlist_data": playlist_data,
+        "matched_count": len(matched_uris),
+        "total_count": len(track_uris),
+        "unmatched_titles": unmatched_titles,
+    }
+    
+    # Evict oldest records if cache gets too large
+    if len(MIGRATION_CACHE) > 10:
+        oldest_key = next(iter(MIGRATION_CACHE))
+        MIGRATION_CACHE.pop(oldest_key, None)
+
+    request.session["migration_ticket"] = ticket
+    return {"status": "success"}
+
+
+@app.get("/done", response_class=HTMLResponse)
+async def done(request: Request):
+    """Instant render page that loads result payload cached on the server."""
+    ticket = request.session.get("migration_ticket")
+    if not ticket:
+        return RedirectResponse(url="/", status_code=303)
+
+    # Retrieve the heavy objects from the server memory using our ticket
+    results = MIGRATION_CACHE.get(ticket)
+    if not results:
+        return RedirectResponse(url="/", status_code=303)
+
+    # Clean the session key (so refresh doesn't hold old migration states)
+    # request.session.pop("migration_ticket", None)
+
+    # Serve the completed template using 100% real, complete API data
     return templates.TemplateResponse(
         "done.html",
         {
             "request": request,
-            "data": profile_data,
-            "playlist": playlist_data,
-            "matched_count": len(matched_uris),
-            "total_count": len(track_uris),
-            "unmatched_titles": unmatched_titles,
+            "data": results["profile_data"],
+            "playlist": results["playlist_data"],
+            "matched_count": results["matched_count"],
+            "total_count": results["total_count"],
+            "unmatched_titles": results["unmatched_titles"],
         },
     )
 

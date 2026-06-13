@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}working... — YouTube2Spotify{% endblock %}
+
+{% block header %}
+<header class="masthead">
+    <h1><em>youtube</em> → <strong>spotify</strong></h1>
+</header>
+{% endblock %}
+
+{% block content %}
+<div class="panel" id="loading-panel">
+    <div class="flow">
+        <span class="from">youtube</span>
+        <span class="arrow" aria-hidden="true"></span>
+        <span class="to">spotify</span>
+    </div>
+
+    <p class="done-badge" style="background: var(--yt); color: white;">working...</p>
+
+    <div style="margin: 1.5rem 0;">
+        <p style="margin-bottom: 1rem; font-weight: 500;">Transferring your playlist. Please do not close this window.
+        </p>
+        <div class="loader-bar"></div>
+    </div>
+
+    <p class="aside">This may take a minute or two depending on the size of your playlist.</p>
+</div>
+
+<!-- Hidden by default, displayed on failure -->
+<div class="panel" id="error-panel"
+    style="display: none; border-color: var(--error); box-shadow: 6px 6px 0 var(--error);">
+    <p class="done-badge" style="background: var(--error); color: white;">error</p>
+    <h2 style="font-family: 'Syne', sans-serif; margin-bottom: 1rem; text-transform: lowercase;">migration failed</h2>
+    <p id="error-message" style="margin-bottom: 1.5rem;"></p>
+    <div class="actions">
+        <a href="/" class="btn" style="box-shadow: 4px 4px 0 var(--error);">go back home</a>
+    </div>
+</div>
+
+<style>
+    .loader-bar {
+        width: 100%;
+        height: 16px;
+        border: 2px solid var(--line);
+        background: repeating-linear-gradient(45deg,
+                var(--line),
+                var(--line) 10px,
+                transparent 10px,
+                transparent 20px);
+        background-size: 40px 40px;
+        animation: move-stripes 1.2s linear infinite;
+    }
+
+    @keyframes move-stripes {
+        0% {
+            background-position: 0 0;
+        }
+
+        100% {
+            background-position: 40px 0;
+        }
+    }
+</style>
+
+<script>
+    async function startMigration() {
+        const loadingPanel = document.getElementById('loading-panel');
+        const errorPanel = document.getElementById('error-panel');
+        const errorMessage = document.getElementById('error-message');
+
+        try {
+            const response = await fetch('/start-migration');
+            if (response.ok) {
+                window.location.href = '/done';
+            } else {
+                const data = await response.json();
+                errorMessage.textContent = data.detail || 'An unexpected error occurred during the transfer.';
+                loadingPanel.style.display = 'none';
+                errorPanel.style.display = 'block';
+            }
+        } catch (error) {
+            errorMessage.textContent = 'Could not establish connection to the server.';
+            loadingPanel.style.display = 'none';
+            errorPanel.style.display = 'block';
+        }
+    }
+
+    window.addEventListener('DOMContentLoaded', startMigration);
+</script>
+{% endblock %}
