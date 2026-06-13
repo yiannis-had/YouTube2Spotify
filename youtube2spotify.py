@@ -4,11 +4,11 @@ import json
 import logging
 import os
 import re
-import unicodedata
 import uuid
 from dataclasses import dataclass
 from urllib.parse import urlencode
 
+from anyascii import anyascii
 import googleapiclient.discovery
 import httpx
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -77,7 +77,7 @@ _FEATURE_PAREN = re.compile(
 )
 _OTHER_PAREN = re.compile(r"\([^)]*\)")
 _PIPE_TAIL = re.compile(r"\s*\|.*$")
-_SEGMENT_SPLIT = re.compile(r"\s+[-–—]+\s*|\s*[-–—]+\s+")
+_SEGMENT_SPLIT = re.compile(r"\s+[-–—−]+\s*|\s*[-–—−]+\s+")
 _ARTIST_SPLIT = re.compile(r"\s*(?:&|\+|,)\s*|\s+x\s+|\s+vs\.?\s+", re.I)
 _FEAT_SPLIT = re.compile(
     r"\s*\bfeaturing\b\s*|\s*\bfeat\.?\s*|\s*\bft\.?\s*|\s*\bcover(?:ed)?(?:\s+by)?\b\s*", re.I
@@ -85,7 +85,8 @@ _FEAT_SPLIT = re.compile(
 _TRAILING_NOISE = re.compile(
     r"(?:\s+(?:official|music\s+video|video|audio|lyrics?|with\s+lyrics|visualizer|"
     r"teaser|trailer|preview|hd|hq|4k|1080p?|mv|m/?v|full|extended|mix|remaster(?:ed)?|"
-    r"cover|topic|explicit|clean|eurovision(?:\s+song\s+contest)?|live|performance|karaoke|\d{4}))+\s*$",
+    r"cover|topic|explicit|clean|eurovision(?:\s+song\s+contest)?|live|performance|karaoke|\d{4}|kpop|"
+    r"demon\s+hunters|lyric\s+video|sped\s+up))+\s*$",
     re.I,
 )
 _GENRES = frozenset({
@@ -99,11 +100,22 @@ _GENRES = frozenset({
 
 
 def _clean_segment(segment: str) -> str:
-    segment = segment.strip().strip("'\"")
+    segment = segment.strip().strip("'\"“”‘’")
+    segment = re.sub(r'["\u201c][^"\u201d]*["\u201d]', ' ', segment)
+    segment = re.sub(r'[\u2018][^\u2019]*[\u2019]', ' ', segment)
     segment = _TRAILING_NOISE.sub("", segment)
     segment = re.sub(r"'\":", " ", segment)
     segment = re.sub(r"\s+", " ", segment).strip()
     return segment
+
+
+def _clean_channel_title(channel_title: str | None) -> str:
+    if not channel_title:
+        return ""
+    channel_title = html.unescape(channel_title)
+    channel_title = re.sub(r"\s+-\s+topic$", "", channel_title, flags=re.I)
+    channel_title = re.sub(r"\s+(?:official|music|channel|records|vevo)$", "", channel_title, flags=re.I)
+    return channel_title.strip()
 
 
 def _extract_artists(segment: str) -> list[str]:
@@ -111,6 +123,9 @@ def _extract_artists(segment: str) -> list[str]:
     for part in _FEAT_SPLIT.split(segment):
         for name in _ARTIST_SPLIT.split(part):
             name = name.strip()
+            name_words = name.split()
+            if len(name_words) > 1 and name_words[-1].lower() in _GENRES:
+                name = " ".join(name_words[:-1])
             if name:
                 artists.append(name)
     return artists
@@ -142,6 +157,7 @@ class SongSearch:
         queries: list[str] = []
         if self.artists:
             queries.append(f"{self.track} {' '.join(self.artists)}")
+            queries.append(f"{self.artists[0]} {self.track}")
             queries.append(f'artist:"{self.artists[0]}" track:"{self.track}"')
         else:
             queries.append(self.track)
@@ -157,7 +173,8 @@ def _strip_brackets_and_parens(text: str) -> str:
 
 def _normalize(text: str) -> str:
     text = text.lower().replace("$", "s")
-    text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("utf-8")
+    text = text.replace("´", "'").replace("`", "'").replace("’", "'").replace("‘", "'")
+    text = anyascii(text)
     text = re.sub(r"[^\w\s']", " ", text)
     return " ".join(text.split())
 
@@ -195,42 +212,41 @@ def _tokens_in_order(needles: list[str], haystack: list[str]) -> bool:
 
 
 def _track_matches(expected: str, spotify_name: str) -> bool:
-    """
-    Return True when `expected` (from the parsed YouTube title) is a
-    reasonable match for `spotify_name`.
-    """
-    exp_norm = _normalize(expected)
-    got_norm = _normalize(spotify_name)
+    parts = re.split(r"\s+x\s+|\s+vs\.?\s+|\s*/\s+", expected, flags=re.I)
+    
+    for part in parts:
+        part = part.strip()
+        if not part:
+            continue
+            
+        exp_norm = _normalize(part)
+        got_norm = _normalize(spotify_name)
 
-    if exp_norm == got_norm:
-        return True
-
-    exp_stripped = _normalize(_strip_spotify_noise(expected))
-    got_stripped = _normalize(_strip_spotify_noise(spotify_name))
-    if exp_stripped and exp_stripped == got_stripped:
-        return True
-
-    exp_tokens = exp_norm.split()
-    got_tokens = got_norm.split()
-    if not exp_tokens:
-        return False
-
-    # all expected tokens must appear, in order, inside the (possibly longer) Spotify title.
-    if len(exp_tokens) > 1 and _tokens_in_order(exp_tokens, got_tokens):
-        # The expected title should account for at least half the tokens
-        if len(exp_tokens) >= len(got_tokens) // 2:
+        if exp_norm == got_norm:
             return True
 
-    # require single token to be a standalone word
-    if len(exp_tokens) == 1:
-        token = exp_tokens[0]
-        if token in got_tokens and got_tokens[0] == token:
+        exp_stripped = _normalize(_strip_spotify_noise(part))
+        got_stripped = _normalize(_strip_spotify_noise(spotify_name))
+        if exp_stripped and exp_stripped == got_stripped:
             return True
 
-    if len(exp_stripped) > 4:
-        if fuzz.ratio(exp_stripped, got_stripped) > 80:
+        exp_tokens = exp_norm.split()
+        got_tokens = got_norm.split()
+        if not exp_tokens:
+            continue
+
+        if len(exp_tokens) > 1 and _tokens_in_order(exp_tokens, got_tokens):
             return True
 
+        if len(exp_tokens) == 1:
+            token = exp_tokens[0]
+            if token in got_tokens and got_tokens[0] == token:
+                return True
+
+        if len(exp_stripped) > 4:
+            if fuzz.ratio(exp_stripped, got_stripped) > 80:
+                return True
+                
     return False
 
 
@@ -291,7 +307,25 @@ def _is_valid_match(search: SongSearch, spotify_track: dict) -> bool:
     if search.artists:
         for candidate_track in search.artists:
             if _track_matches(candidate_track, spotify_name):
-                if _artists_match([search.track], spotify_artists):
+                other_artists = [search.track] + [a for a in search.artists if a != candidate_track]
+                if _artists_match(other_artists, spotify_artists):
+                    return True
+
+    if _track_matches(search.track, spotify_name):
+        exp_combined = set(_normalize(search.track).split())
+        for artist in search.artists:
+            exp_combined.update(_normalize(artist).split())
+            
+        sp_combined = set(_normalize(spotify_name).split())
+        for artist in spotify_artists:
+            sp_combined.update(_normalize(artist).split())
+
+        exp_meaningful = {t for t in exp_combined if len(t) >= 2}
+        sp_meaningful = {t for t in sp_combined if len(t) >= 2}
+
+        if exp_meaningful and sp_meaningful:
+            if sp_meaningful.issubset(exp_meaningful) or exp_meaningful.issubset(sp_meaningful):
+                if len(sp_meaningful.intersection(exp_meaningful)) >= 2:
                     return True
 
     return False
@@ -346,11 +380,18 @@ async def _find_track_uri(
     client: httpx.AsyncClient,
     headers: dict[str, str],
     video_title: str,
+    video_channel_title: str | None,
     semaphore: asyncio.Semaphore,
 ) -> str | None:
     song_search = _parse_song_title(video_title)
     if not song_search:
         return None
+
+    # Fallback to cleaned channel title if no artist was parsed from the video title
+    if not song_search.artists and video_channel_title:
+        cleaned_channel = _clean_channel_title(video_channel_title)
+        if cleaned_channel:
+            song_search = SongSearch(track=song_search.track, artists=[cleaned_channel])
 
     async with semaphore:
         for song_query in song_search.queries():
@@ -359,7 +400,7 @@ async def _find_track_uri(
                 try:
                     search_res = await client.get(
                         "https://api.spotify.com/v1/search",
-                        params={"q": song_query, "limit": "5", "type": "track"},
+                        params={"q": song_query, "limit": "10", "type": "track"},
                         headers=headers,
                     )
                     
@@ -446,7 +487,7 @@ async def favicon():
 
 
 @app.post("/", response_class=HTMLResponse)
-async def index_submit(
+async def submit(
     request: Request,
     youtube_playlist: str = Form(...),
     spotify_playlist_name: str = Form(...),
@@ -528,26 +569,43 @@ async def callback(request: Request, code: str | None = None, error: str | None 
     return RedirectResponse(url="/processing", status_code=303)
 
 
-@app.get("/refresh")
-async def refresh(request: Request):
+async def _refresh_session_tokens(request: Request) -> str | None:
+    """Refreshes Spotify tokens using session data and returns the new access token."""
     tokens = request.session.get("tokens")
     if not tokens or not tokens.get("refresh_token"):
-        raise HTTPException(status_code=400, detail="No refresh token in session.")
+        return None
 
     async with httpx.AsyncClient() as client:
-        res = await client.post(
-            TOKEN_URL,
-            auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET),
-            data={
-                "grant_type": "refresh_token",
-                "refresh_token": tokens["refresh_token"],
-            },
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-        )
+        try:
+            res = await client.post(
+                TOKEN_URL,
+                auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET),
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": tokens["refresh_token"],
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            if res.status_code == 200:
+                res_data = res.json()
+                new_token = res_data.get("access_token")
+                if new_token:
+                    # Update session data in place
+                    tokens["access_token"] = new_token
+                    request.session["tokens"] = tokens
+                    return new_token
+        except httpx.HTTPError as e:
+            logger.error("Failed to refresh token: %s", e)
 
-    res_data = res.json()
-    request.session["tokens"]["access_token"] = res_data.get("access_token")
-    return json.dumps(request.session["tokens"])
+    return None
+
+
+@app.get("/refresh")
+async def refresh(request: Request):
+    new_token = await _refresh_session_tokens(request)
+    if not new_token:
+        raise HTTPException(status_code=400, detail="Failed to refresh token or missing token in session.")
+    return request.session["tokens"]
 
 
 @app.get("/processing", response_class=HTMLResponse)
@@ -592,22 +650,12 @@ async def start_migration(request: Request):
     )
     async with httpx.AsyncClient(limits=limits) as client:
         profile_res = await client.get(ME_URL, headers=headers)
-        
+            
         # If the token is expired, refresh it inline once
-        if profile_res.status_code == 401 and tokens.get("refresh_token"):
-            refresh_res = await client.post(
-                TOKEN_URL,
-                auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET),
-                data={
-                    "grant_type": "refresh_token",
-                    "refresh_token": tokens["refresh_token"],
-                },
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-            )
-            if refresh_res.status_code == 200:
-                tokens["access_token"] = refresh_res.json().get("access_token")
-                request.session["tokens"] = tokens
-                headers["Authorization"] = f"Bearer {tokens['access_token']}"
+        if profile_res.status_code == 401:
+            new_token = await _refresh_session_tokens(request)
+            if new_token:
+                headers["Authorization"] = f"Bearer {new_token}"
                 profile_res = await client.get(ME_URL, headers=headers)
 
         profile_data = profile_res.json()
@@ -627,7 +675,11 @@ async def start_migration(request: Request):
         track_uris = await asyncio.gather(
             *[
                 _find_track_uri(
-                    client, headers, video["snippet"]["title"], semaphore
+                    client,
+                    headers,
+                    video["snippet"]["title"],
+                    video["snippet"].get("videoOwnerChannelTitle"),
+                    semaphore
                 )
                 for video in videos
             ]
@@ -664,20 +716,16 @@ async def start_migration(request: Request):
 
 @app.get("/done", response_class=HTMLResponse)
 async def done(request: Request):
-    """Instant render page that loads result payload cached on the server."""
     ticket = request.session.get("migration_ticket")
     if not ticket:
         return RedirectResponse(url="/", status_code=303)
 
-    # Retrieve the heavy objects from the server memory using our ticket
     results = MIGRATION_CACHE.get(ticket)
     if not results:
         return RedirectResponse(url="/", status_code=303)
 
-    # Clean the session key (so refresh doesn't hold old migration states)
-    # request.session.pop("migration_ticket", None)
+    request.session.pop("migration_ticket", None)
 
-    # Serve the completed template using 100% real, complete API data
     return templates.TemplateResponse(
         "done.html",
         {
@@ -694,4 +742,4 @@ async def done(request: Request):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("youtube2spotify:app", host="0.0.0.0", port=8080, reload=True)
+    uvicorn.run("youtube2spotify:app", host="0.0.0.0", port=8080)
