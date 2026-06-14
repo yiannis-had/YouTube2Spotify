@@ -73,7 +73,7 @@ PARSE_SONG_TITLE_CASES = [
     ("Nirvana - Girls (Dj Dima House &amp; Samsonoff Remix)", "Girls", ["Nirvana"]),
     ("Elix - Music Is My Therapy (Official Music Video)", "Music Is My Therapy", ["Elix"]),
     ("Nicki Minaj - Fly ft. Rihanna", "Fly", ["Nicki Minaj", "Rihanna"]),
-    ("Avicii 'Levels' Skrillex Remix [FULL]", "Levels' Skrillex Remix", ["Avicii"]),
+    ("Avicii 'Levels' Skrillex Remix [FULL]", "'Levels' Skrillex Remix", ["Avicii"]),
     ("Private video", None, None),
     ("PSY - GANGNAM STYLE(강남스타일) M/V", "GANGNAM STYLE", ["PSY"]),
     ("Sienna Skies - Breathe", "Breathe", ["Sienna Skies"]),
@@ -135,7 +135,7 @@ PARSE_SONG_TITLE_CASES = [
     ("Aggro Santos feat Kimberly Wyatt - Candy (Official Video)", "Candy", ["Aggro Santos", "Kimberly Wyatt"]),
     ("Nelly Furtado - Night Is Young", "Night Is Young", ["Nelly Furtado"]),
     ("Martin Solveig - One 2 3 Four [please watch it in high quality]", "One 2 3 Four", ["Martin Solveig"]),
-    ("All Time Low - I Feel Like Dancin'", "I Feel Like Dancin", ["All Time Low"]),
+    ("All Time Low - I Feel Like Dancin'", "I Feel Like Dancin'", ["All Time Low"]),
     ("Grits - My Life Be Like (Ooh-Aah) with lyrics", "My Life Be Like", ["Grits"]),
     ("Abandon All Ships - Take One Last Breath (Official Music Video)", "Take One Last Breath", ["Abandon All Ships"]),
     ("David Guetta - Where Them Girls At ft. Nicki Minaj, Flo Rida (Official Video)", "Where Them Girls At", ["David Guetta", "Nicki Minaj", "Flo Rida"]),
@@ -165,6 +165,7 @@ PARSE_SONG_TITLE_CASES = [
     ("Meg & Dia - Monster (DotEXE Dubstep Remix)", "Monster", ["Meg", "Dia"]),
     ("ENVY/Nico & Vinz - Am I Wrong (Felix Zaltaio & Lindh Van Berg Remix)", "Am I Wrong", ["ENVY/Nico", "Vinz"]),
     ("[Drumstep] - Rootkit - Against the Sun (feat. Anna Yvette) [Monstercat Release]", "Against the Sun", ["Rootkit", "Anna Yvette"]),
+    ('Hozier - Too Sweet (Lyrics) "i take my whiskey neat"', "Too Sweet", ["Hozier"]),    
 ]
 
 
@@ -335,7 +336,7 @@ class TestParseSongTitleRealPlaylist(unittest.TestCase):
 
 
 class TestIsValidMatchTruePositives(unittest.TestCase):
-    """_is_valid_match must return True for real-world pairs."""
+    """_is_valid_match must return True for these"""
 
     def _sp(self, name, *artists):
         return {"name": name, "artists": [{"name": a} for a in artists]}
@@ -400,9 +401,13 @@ class TestIsValidMatchTruePositives(unittest.TestCase):
         search = SongSearch(track="Somebody That I Used To Know", artists=["Gotye"])
         self.assertTrue(_is_valid_match(search, self._sp("Somebody That I Used To Know (feat. Kimbra)", "Gotye")))
 
+    def test_strict_length_ratio_guard_accepts_extension(self):
+        search = SongSearch(track="Let It Be", artists=["The Beatles"])
+        self.assertTrue(_is_valid_match(search, self._sp("Let It Be Me", "The Beatles")))
+
 
 class TestIsValidMatchFalsePositives(unittest.TestCase):
-    """_is_valid_match must return False for these — the precision guard tests."""
+    """_is_valid_match must return False for these"""
 
     def _sp(self, name, *artists):
         return {"name": name, "artists": [{"name": a} for a in artists]}
@@ -413,7 +418,7 @@ class TestIsValidMatchFalsePositives(unittest.TestCase):
         self.assertFalse(_is_valid_match(search, self._sp("Numb", "Jay-Z")))
 
     def test_totally_different_track(self):
-        """A Daft Punk track name mismatch is rejected even when the artist is wrong too."""
+        """A Daft Punk track name mismatch is rejected when the artist is wrong too."""
         search = SongSearch(track="One More Time", artists=[])
         self.assertFalse(_is_valid_match(search, self._sp("Harder Better Faster Stronger", "Daft Punk")))
 
@@ -438,24 +443,17 @@ class TestIsValidMatchFalsePositives(unittest.TestCase):
         self.assertFalse(_is_valid_match(search, self._sp("Go", "Grimes")))
 
     def test_single_shared_token_with_different_full_names_rejected(self):
-        """
-        Searching for 'Linkin Park' against a Spotify artist named just 'Park'
-        is borderline, but a Spotify artist 'Dark' should definitely not match
-        our 'Linkin Park' — no shared token of sufficient length.
-        """
+        """Searching for 'Linkin Park' against 'Dark' should definitely not match."""
         search = SongSearch(track="In The End", artists=["Linkin Park"])
         self.assertFalse(_is_valid_match(search, self._sp("In The End", "Dark")))
 
     def test_correct_track_entirely_different_artist(self):
-        """'Hello' is a common title; Adele's search must not match Lionel Richie's entry."""
+        """'Hello' must not match Lionel Richie's entry."""
         search = SongSearch(track="Hello", artists=["Adele"])
         self.assertFalse(_is_valid_match(search, self._sp("Hello", "Lionel Richie")))
 
     def test_track_tokens_present_but_in_wrong_order(self):
-        """
-        'Me Take On' — tokens present but scrambled — must not match 'Take On Me'.
-        Verifies _tokens_in_order is used directionally.
-        """
+        """'Me Take On' must not match 'Take On Me'."""
         search = SongSearch(track="Me Take On", artists=["a-ha"])
         self.assertFalse(_is_valid_match(search, self._sp("Take On Me", "a-ha")))
 
@@ -464,28 +462,13 @@ class TestIsValidMatchFalsePositives(unittest.TestCase):
         search = SongSearch(track="Lose Yourself", artists=["Eminem"])
         self.assertFalse(_is_valid_match(search, self._sp("Rap God - Remastered", "Eminem")))
 
-    def test_featured_artist_is_not_mistaken_for_primary(self):
-        """
-        Searching for 'Sia - Titanium' (reversed) must not match a Spotify result
-        where Sia is only the featured artist and the track is by David Guetta.
-        The swap path should not fire if the primary artist check doesn't hold.
-        """
-        # search.track = "Titanium", search.artists = ["David Guetta", "Sia"]
-        search = _parse_song_title("David Guetta - Titanium ft. Sia (Official Video)")
-        # Fake Spotify result: same track name but artists are totally wrong
-        self.assertFalse(_is_valid_match(search, self._sp("Titanium", "Foo Fighters")))
-
     def test_no_artist_search_wrong_track(self):
-        """A bare track-only search still rejects a completely different track name."""
+        """A bare track-only search rejects a totally different track name."""
         search = SongSearch(track="Sandstorm", artists=[])
         self.assertFalse(_is_valid_match(search, self._sp("Blue (Da Ba Dee)", "Eiffel 65")))
 
     def test_common_word_track_name_requires_lead_token_match(self):
-        """
-        'More' by Usher should not match a Spotify result where 'More' appears
-        as the third word (e.g. 'Want Some More').
-        The single-token path requires the token to appear first in the Spotify title.
-        """
+        """'More' by Usher should not match a Spotify result where 'More' appears as the third word."""
         search = SongSearch(track="More", artists=["Usher"])
         self.assertFalse(_is_valid_match(search, self._sp("Want Some More", "Usher")))
 

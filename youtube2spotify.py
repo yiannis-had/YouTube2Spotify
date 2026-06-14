@@ -1,6 +1,5 @@
 import asyncio
 import html
-import json
 import logging
 import os
 import re
@@ -26,7 +25,6 @@ app.add_middleware(
 )
 templates = Jinja2Templates(directory="templates")
 
-# Server-side memory storage for migration results (keeps cookies empty and safe)
 MIGRATION_CACHE = {}
 
 BASE_URI = os.environ.get("BASE_URI", "http://127.0.0.1:8080")
@@ -97,14 +95,17 @@ _GENRES = frozenset({
     "folk", "country", "r&b", "rnb", "soul", "indie", "lofi", "lo-fi",
     "phonk", "garage", "synthwave", "vaporwave", "hardstyle", "psytrance",
 })
+_QUOTE_PAIRS = {'"': '"', "'": "'", "“": "”", "‘": "’"}
 
 
 def _clean_segment(segment: str) -> str:
-    segment = segment.strip().strip("'\"“”‘’")
-    segment = re.sub(r'["\u201c][^"\u201d]*["\u201d]', ' ', segment)
-    segment = re.sub(r'[\u2018][^\u2019]*[\u2019]', ' ', segment)
+    segment = segment.strip()
+
+    if len(segment) >= 2 and segment[0] in _QUOTE_PAIRS and segment[-1] == _QUOTE_PAIRS[segment[0]]:
+        segment = segment[1:-1]
+        
+    segment = re.sub(r'["\u201c][^"\u201d]*["\u201d]|[\u2018][^\u2019]*[\u2019]', ' ', segment)
     segment = _TRAILING_NOISE.sub("", segment)
-    segment = re.sub(r"'\":", " ", segment)
     segment = re.sub(r"\s+", " ", segment).strip()
     return segment
 
@@ -469,12 +470,18 @@ async def _add_tracks_to_playlist(
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
+async def index(request: Request, error: str | None = None):
+    errors = {}
+    if error == "auth_denied":
+        errors["auth"] = "Spotify connection was cancelled. Please authorise the app."
+    elif error == "missing_code":
+        errors["auth"] = "Failed to retrieve authorisation code from Spotify. Please try again."
+
     return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
-            "errors": {},
+            "errors": errors,
             "youtube_playlist": "",
             "spotify_playlist_name": "",
         },
@@ -539,9 +546,11 @@ async def logout(request: Request):
 @app.get("/callback")
 async def callback(request: Request, code: str | None = None, error: str | None = None):
     if error:
+        if error == "access_denied":
+            return RedirectResponse(url="/?error=auth_denied", status_code=303)
         raise HTTPException(status_code=400, detail=error)
     if not code:
-        raise HTTPException(status_code=400, detail="Missing authorization code.")
+        return RedirectResponse(url="/?error=missing_code", status_code=303)
 
     async with httpx.AsyncClient() as client:
         res = await client.post(

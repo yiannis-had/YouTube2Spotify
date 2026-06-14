@@ -16,6 +16,12 @@
     <span class="to">spotify</span>
   </div>
 
+  {% if errors.get('auth') %}
+  <div class="error-banner" style="background-color: rgba(255, 0, 0, 0.08); border-left: 4px solid #ff0000; padding: 12px; margin-bottom: 20px; border-radius: 4px; text-align: left;">
+    <p class="error-msg" style="margin: 0; padding: 0;">{{ errors.auth }}</p>
+  </div>
+  {% endif %}
+
   <form method="POST" action="/">
     <div class="form-group">
       <label for="youtube_playlist">playlist url</label>
